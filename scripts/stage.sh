@@ -18,6 +18,9 @@ for package in "${packages[@]}"; do
   mkdir -p "$destination"
   while IFS= read -r -d '' file; do
     name=${file##*/}
+    # Upstream webpack adapters embed its npm package names and are not part of
+    # this standalone ESM distribution.
+    [[ $name != webpack.mjs ]] || continue
     # Helpers for other minors would advertise binary files absent from this tar.
     if [[ $name =~ ^8\.[0-5]\.mjs$ && $name != "$PHP_MINOR.mjs" ]]; then continue; fi
     cp -L -- "$file" "$destination/$name"
@@ -95,10 +98,10 @@ patches=$(
   done < <(find . -type f -print0 | sort -z)
 ) > "$BUILD_DIRECTORY/artifact-files.jsonl"
 jq -n --slurpfile versions "$INT64_ROOT/versions.json" --slurpfile build "$BUILD_DIRECTORY/built.json" \
-  --arg version "$RELEASE_VERSION" --arg minor "$PHP_MINOR" --arg php "$PHP_VERSION" \
+  --arg version "$RELEASE_VERSION" --arg minor "$PHP_MINOR" --arg php "$PHP_VERSION" --arg phpCommit "$PHP_COMMIT" \
   --arg fingerprint "$BUILD_FINGERPRINT" --arg node "$(node --version)" --arg make "$(make --version | sed -n '1p')" \
   --argjson patches "$(jq -s . <<< "$patches")" --slurpfile files "$BUILD_DIRECTORY/artifact-files.jsonl" \
-  '{schemaVersion:1,name:"php-wasm-int64",version:$version,php:{minor:$minor,version:$php},
+  '{schemaVersion:1,name:"php-wasm-int64",version:$version,php:{minor:$minor,version:$php,commit:$phpCommit},
     abi:$versions[0].abi,upstream:$versions[0].upstream,emscripten:$versions[0].emscripten,
     vrzno:$versions[0].vrzno,patches:$patches,build:($build[0]+{node:$node,make:$make}),
     fingerprint:$fingerprint,format:"esm",files:($files | from_entries)}' > "$staging/manifest.json"

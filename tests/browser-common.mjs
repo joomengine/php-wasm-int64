@@ -17,7 +17,7 @@ export const runtimeIni = [
 
 export async function loadExtensions(packagesURL, version) {
   if (!supportedVersions.includes(version)) throw new Error(`Unsupported PHP minor: ${version}`);
-  const modules = await Promise.all(extensionPackages.map(name => import(new URL(`${name}/${version}.mjs`, packagesURL).href)));
+  const modules = await Promise.all(extensionPackages.map(name => import(new URL(`${name}/${name === 'libxml' ? 'index' : version}.mjs`, packagesURL).href)));
   return modules.map(module => module.default);
 }
 

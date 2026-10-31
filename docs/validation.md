@@ -8,6 +8,7 @@ ready on the strength of checks from an earlier commit.
 ## Required behavior
 
 - PHP exposes 8-byte integers and the exact signed 64-bit minimum and maximum.
+- The executing PHP patch version matches the distribution manifest.
 - Arithmetic, overflow, shifts, numeric array keys, serialization, JSON,
   pack/unpack, and date values retain their PHP semantics.
 - PHP integers outside the wasm32 size range cannot wrap into a small
@@ -15,6 +16,7 @@ ready on the strength of checks from an earlier commit.
 - Vrzno preserves exact integers across both directions of the PHP/JavaScript
   boundary, including values beyond JavaScript's safe Number range.
 - Embedded, CGI, CLI, and debugger runtimes agree on integer width.
+- PHP fibers retain integer values across suspension, resumption, and return.
 - The matching dynamically loaded PHP extensions start and execute real
   operations, rather than merely existing on disk.
 - Browser execution is tested with the built WebAssembly artifacts.

@@ -1,6 +1,6 @@
 # PHP-WASM int64
 
-Reproducible PHP 8.3–8.5 WebAssembly builds with native 64-bit PHP integers, based on Sean Morris’s PHP-WASM runtime.
+Pinned PHP 8.3–8.5 WebAssembly builds with native 64-bit PHP integers, based on Sean Morris’s PHP-WASM runtime.
 
 ## Status
 
@@ -15,14 +15,16 @@ This repository retrieves pinned revisions of
 Vrzno, applies reviewed patches, and compiles a separate distribution. It has no
 WordPress runtime dependency.
 
-| PHP minor | Initial upstream PHP source | Integer model |
+| PHP minor | Pinned PHP source | Integer model |
 | --- | --- | --- |
-| 8.3 | 8.3.11 | Signed 64-bit PHP integers; wasm32 pointers |
-| 8.4 | 8.4.1 | Signed 64-bit PHP integers; wasm32 pointers |
-| 8.5 | 8.5.2 | Signed 64-bit PHP integers; wasm32 pointers |
+| 8.3 | 8.3.36 | Signed 64-bit PHP integers; wasm32 pointers |
+| 8.4 | 8.4.27 | Signed 64-bit PHP integers; wasm32 pointers |
+| 8.5 | 8.5.12 | Signed 64-bit PHP integers; wasm32 pointers |
 
-These patch releases match the selected PHP-WASM source revision; they are not
-a statement of the latest PHP security releases. The exact source commits,
+These are PHP's current security releases as checked on 2026-10-31 against
+[the official release feed](https://www.php.net/releases/active.php). Sean's
+runtime patches are rebased onto these releases, preserving their newer fixes.
+Release updates remain explicit reviewed changes. The exact source commits,
 Emscripten version, and builder image digest are in [versions.json](versions.json).
 Native-library revisions and archive checksums are in
 [config/dependencies.json](config/dependencies.json).
@@ -80,6 +82,12 @@ and build scripts select a distinct build directory under `.build/`. Downloads
 are reused from `.cache/`; output is staged under `dist/php-8.4/` for that minor.
 `scripts/workspace.sh 8.4` prints its prepared upstream source directory.
 
+CI can reuse a compiled distribution only for the exact build fingerprint and
+runner platform. It verifies the restored inventory and still packages,
+extracts, and runs every runtime/browser test. A cached build never substitutes
+for passing tests. Failed runtime runs retain separately named `unverified-php-*`
+archives for three days to support debugging; these are not release assets.
+
 ## Use the artifacts
 
 Release archives are named `php-wasm-int64-VERSION-php8.4.tar.gz` with a separate
@@ -112,6 +120,7 @@ auditable; deterministic archive metadata alone is not a claim that native
 compilation is bit-for-bit reproducible across different build hosts.
 
 See [architecture](docs/architecture.md), [validation and readiness](docs/validation.md),
-the [PHP patch notes](patches/php/README.md), and the [Vrzno patch notes](patches/vrzno/README.md).
+the [PHP patch notes](patches/php/README.md), the [runtime patch notes](patches/runtime/README.md),
+and the [Vrzno patch notes](patches/vrzno/README.md).
 This repository's own code is Apache-2.0. Included upstream sources and binaries
 retain their licenses and notices; see [NOTICE](NOTICE).

@@ -15,6 +15,14 @@ export const runtimeIni = [
   'max_execution_time=30', 'phar.readonly=0',
 ].join('\n');
 
+export function runtimeIdentityEnvironment(minor, expectedVersion) {
+  check(typeof expectedVersion === 'string' && /^8\.[345]\.\d+$/.test(expectedVersion)
+    && expectedVersion.startsWith(`${minor}.`), 'Missing or invalid expected PHP release');
+  const environment = { JOOMENGINE_EXPECTED_PHP_VERSION: expectedVersion };
+  // Embedded/CLI/debugger wrappers use Emscripten ENV; CGI writes env per request.
+  return { ENV: { ...environment }, env: { ...environment } };
+}
+
 export async function loadExtensions(packagesURL, version) {
   if (!supportedVersions.includes(version)) throw new Error(`Unsupported PHP minor: ${version}`);
   const modules = await Promise.all(extensionPackages.map(name => import(new URL(`${name}/${name === 'libxml' ? 'index' : version}.mjs`, packagesURL).href)));

@@ -124,7 +124,7 @@ index 0369686..8714776 100644
  const origZval = Symbol('origZval');
 diff --git a/js/vrzno_json.js b/js/vrzno_json.js
 new file mode 100644
-index 0000000..8469cf4
+index 0000000..bc4960e
 --- /dev/null
 +++ b/js/vrzno_json.js
 @@ -0,0 +1,78 @@
@@ -139,7 +139,7 @@ index 0000000..8469cf4
 +Module.vrznoParseJson = source => {
 +	let offset = 0;
 +	const whitespace = () => {
-+		while(offset < source.length && /[\x20\t\n\r]/.test(source[offset])) offset++;
++		while(offset < source.length && [32, 9, 10, 13].includes(source.charCodeAt(offset))) offset++;
 +	};
 +	const fail = () => { throw new SyntaxError(`Invalid PHP bridge JSON at offset ${offset}`); };
 +	const string = () => {
@@ -190,7 +190,7 @@ index 0000000..8469cf4
 +		{
 +			if(source.startsWith(literal, offset)) { offset += literal.length; return result; }
 +		}
-+		const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(offset));
++		const match = /^-?(?:0|[1-9][0-9]*)(?:[.][0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(offset));
 +		if(!match) return fail();
 +		const token = match[0];
 +		offset += token.length;
@@ -256,7 +256,7 @@ index c7b46a3..ca5d0c9 100644
  					break;
  
 diff --git a/js/vrzno_properties_json.js b/js/vrzno_properties_json.js
-index fdff3dd..f8a0b57 100644
+index fdff3dd..d486d7a 100644
 --- a/js/vrzno_properties_json.js
 +++ b/js/vrzno_properties_json.js
 @@ -1,6 +1,7 @@
@@ -269,7 +269,7 @@ index fdff3dd..f8a0b57 100644
   *
   * @function vrzno_js_properties_json
   * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
-@@ -13,14 +14,80 @@ let json;
+@@ -13,14 +14,99 @@ let json;
  
  if(typeof target === 'function')
  {
@@ -330,18 +330,37 @@ index fdff3dd..f8a0b57 100644
 +			return value;
 +		});
 +
-+		let position = 0;
-+		json = serialized.replace(/"(?:[^"\\]|\\[\s\S])*"/g, (token, offset) => {
-+			let following = offset + token.length;
-+			while(following < serialized.length && /[\x20\t\n\r]/.test(serialized[following])) following++;
-+			if(serialized[following] === ':') return token;
++		let position = 0, offset = 0, copied = 0;
++		const fragments = [];
++		// Scan JSON strings explicitly: a quote-containing regex is not a valid
++		// C preprocessing token sequence when EM_JS stringifies this body.
++		while(offset < serialized.length)
++		{
++			if(serialized.charCodeAt(offset++) !== 34) continue;
++			const start = offset - 1;
++			while(offset < serialized.length)
++			{
++				const character = serialized.charCodeAt(offset++);
++				if(character === 92) { offset++; continue; }
++				if(character === 34) break;
++			}
++			const token = serialized.slice(start, offset);
++			let following = offset;
++			while(following < serialized.length && [32, 9, 10, 13].includes(serialized.charCodeAt(following))) following++;
++			if(serialized[following] === ':') continue;
 +			const entry = strings[position++];
 +			if(!entry || JSON.parse(token) !== entry.text)
 +			{
 +				throw new TypeError('Unexpected JSON string ordering during PHP property inspection');
 +			}
-+			return entry.integer ? entry.text : token;
-+		});
++			if(entry.integer)
++			{
++				fragments.push(serialized.slice(copied, start), entry.text);
++				copied = offset;
++			}
++		}
++		fragments.push(serialized.slice(copied));
++		json = fragments.join('');
 +		if(position !== strings.length)
 +		{
 +			throw new TypeError('Incomplete JSON string ordering during PHP property inspection');

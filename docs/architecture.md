@@ -63,10 +63,15 @@ change that must pass patch application, compilation, and runtime validation
 for all supported PHP versions. Patches apply with checked context; a changed
 source is a review event, not permission to omit a patch.
 
-The initial PHP patch releases match the selected PHP-WASM revision. The
-minor-version support matrix is not a claim that these are the newest PHP
-patch releases. Source maintenance and PHP security updates must be tracked
-as part of runtime release maintenance.
+The initial PHP sources are the 8.3.36, 8.4.27, and 8.5.12 security releases,
+verified against PHP's release feed on 2026-10-31. The runtime compatibility
+patches in `patches/runtime/` adapt Sean's pinned patch set to these newer
+sources; the integer changes in `patches/php/` apply afterward. Rebases must
+preserve upstream security fixes, including allocation-failure handling.
+The build rejects a source version that differs from its manifest and does
+not fall back to the older PHP sources selected by upstream's Make defaults.
+Future PHP and native-library updates still require explicit review and the
+complete validation matrix; these pins do not advance automatically.
 
 ## Integration boundary
 

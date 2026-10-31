@@ -1,13 +1,14 @@
 import { installBridgeFixtures } from './bridge/fixtures.mjs';
 import {
-  runtimeIni, loadExtensions, captureOutput, check, checkFixtureResult, mountFixtures,
+  runtimeIni, loadExtensions, captureOutput, check, checkFixtureResult, mountFixtures, runtimeIdentityEnvironment,
 } from './browser-common.mjs';
 
-export async function runBrowserRuntime(kind, version, fixtures) {
+export async function runBrowserRuntime(kind, version, expectedVersion, fixtures) {
   installBridgeFixtures(globalThis);
   const packagesURL = new URL('/packages/', globalThis.location.href);
   const sharedLibs = await loadExtensions(packagesURL, version);
-  const options = { version, sharedLibs, ini: runtimeIni, autoTransaction: false, persist: [] };
+  const options = { version, sharedLibs, ini: runtimeIni, autoTransaction: false, persist: [],
+    ...runtimeIdentityEnvironment(version, expectedVersion) };
   if (kind === 'cgi-worker') {
     const { PhpCgiWorker } = await import(new URL('php-cgi-wasm/PhpCgiWorker.mjs', packagesURL));
     const php = new PhpCgiWorker({ ...options, prefix: '/', docroot: '/int64-tests', staticFS: true });
@@ -40,5 +41,5 @@ export async function runBrowserRuntime(kind, version, fixtures) {
       checkFixtureResult(fixture, stdout, stderr);
     }
   }
-  return { php: version, runtime: kind, passed: true };
+  return { php: expectedVersion, runtime: kind, passed: true };
 }

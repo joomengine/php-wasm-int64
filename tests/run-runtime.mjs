@@ -7,12 +7,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installBridgeFixtures } from './bridge/fixtures.mjs';
 import {
   supportedVersions, fixtureDefinitions, runtimeIni, loadExtensions,
-  captureOutput, checkFixtureResult, mountFixtures,
+  captureOutput, checkFixtureResult, mountFixtures, runtimeIdentityEnvironment,
 } from './browser-common.mjs';
 
 const version = process.argv[2] || process.env.PHP_VERSION;
 assert.ok(supportedVersions.includes(version), 'Usage: node tests/run-runtime.mjs <8.3|8.4|8.5> [distribution-directory]');
 const directory = resolve(process.argv[3] || `dist/php-${version}`);
+const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, 'utf8'));
+assert.equal(manifest.php?.minor, version, 'Runtime manifest PHP minor mismatch');
+const identityEnvironment = runtimeIdentityEnvironment(version, manifest.php?.version);
 const kind = process.argv[4];
 const packagesURL = pathToFileURL(`${directory}/packages/`);
 const fixtures = await Promise.all(fixtureDefinitions.map(async definition => ({
@@ -31,7 +34,7 @@ async function waitFor(check, label, output, timeout = 30000) {
 async function validate(runtimeKind) {
   installBridgeFixtures(globalThis);
   const sharedLibs = await loadExtensions(packagesURL, version);
-  const options = { version, sharedLibs, ini: runtimeIni, autoTransaction: false };
+  const options = { version, sharedLibs, ini: runtimeIni, autoTransaction: false, ...identityEnvironment };
   if (runtimeKind === 'embedded') {
     const { PhpNode } = await import(new URL('php-wasm/PhpNode.mjs', packagesURL));
     const php = new PhpNode(options);
@@ -110,7 +113,7 @@ async function validate(runtimeKind) {
   } else {
     throw new Error(`Unknown runtime kind: ${runtimeKind}`);
   }
-  console.log(JSON.stringify({ php: version, runtime: runtimeKind, passed: true }));
+  console.log(JSON.stringify({ php: manifest.php.version, runtime: runtimeKind, passed: true }));
 }
 
 if (kind) {

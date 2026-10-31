@@ -1,7 +1,8 @@
 # PHP wasm32 with native int64 integers
 
 Apply the patch matching the PHP minor version to its pinned source tree **after**
-the upstream PHP-WASM patch. The patches target PHP 8.3.11, 8.4.1, and 8.5.2;
+the corresponding patch in `patches/runtime/`. The patches target PHP 8.3.36,
+8.4.27, and 8.5.12;
 new source releases require review and a fresh full build/test matrix.
 
 Compile the runtime and every PHP extension with `-DZEND_WASM_INT64=1` and retain
@@ -30,7 +31,7 @@ The patches:
   fit a wasm32 PHP string before allocating their buffers.
 
 `tests/php/core.php` covers arithmetic and overflow, hash keys with equal low
-32 bits, PHP value copying, serialization, JSON, binary packing, dates outside
+32 bits, PHP value copying, fiber suspension/resumption, serialization, JSON, binary packing, dates outside
 the 32-bit timestamp range, and out-of-range memory offsets. These checks are
 part of the release gate, not a claim that arbitrary third-party native PHP
 extensions are compatible without a matching build and validation.

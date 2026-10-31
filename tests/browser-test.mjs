@@ -6,11 +6,15 @@ import { createReadStream } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, firefox, webkit } from 'playwright';
-import { fixtureDefinitions, supportedVersions } from './browser-common.mjs';
+import { fixtureDefinitions, supportedVersions, runtimeIdentityEnvironment } from './browser-common.mjs';
 
 const version = process.argv[2] || process.env.PHP_VERSION;
 assert.ok(supportedVersions.includes(version), 'Usage: node tests/browser-test.mjs <8.3|8.4|8.5> [distribution-directory]');
 const directory = resolve(process.argv[3] || `dist/php-${version}`);
+const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, 'utf8'));
+assert.equal(manifest.php?.minor, version, 'Runtime manifest PHP minor mismatch');
+const expectedVersion = manifest.php?.version;
+runtimeIdentityEnvironment(version, expectedVersion);
 const testsDirectory = fileURLToPath(new URL('./', import.meta.url));
 const fixtures = await Promise.all(fixtureDefinitions.map(async definition => ({
   ...definition, source: await readFile(new URL(definition.path, import.meta.url), 'utf8'),
@@ -80,10 +84,10 @@ try {
           });
           page.on('requestfailed', request => diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
           await page.goto(origin);
-          const result = await deadline(page.evaluate(async ({ kind, version, fixtures }) => {
+          const result = await deadline(page.evaluate(async ({ kind, version, expectedVersion, fixtures }) => {
             if (kind === 'web') {
               const { runBrowserRuntime } = await import('/tests/browser-harness.mjs');
-              return runBrowserRuntime(kind, version, fixtures);
+              return runBrowserRuntime(kind, version, expectedVersion, fixtures);
             }
             return new Promise((resolvePromise, reject) => {
               const worker = new Worker('/tests/browser-worker.mjs', { type: 'module' });
@@ -93,9 +97,9 @@ try {
                 if (event.data.error) reject(new Error(event.data.error.stack || event.data.error.message));
                 else resolvePromise(event.data.result);
               };
-              worker.postMessage({ kind, version, fixtures });
+              worker.postMessage({ kind, version, expectedVersion, fixtures });
             });
-          }, { kind, version, fixtures }), `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
+          }, { kind, version, expectedVersion, fixtures }), `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
           assert.equal(result.passed, true);
           assert.deepEqual(diagnostics, [], `Browser errors in ${name}/${kind}`);
           assert.deepEqual(errors, [], 'Missing browser artifacts');

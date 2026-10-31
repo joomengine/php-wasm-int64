@@ -30,6 +30,9 @@ set_error_handler(static function (int $severity, string $message, string $file,
 });
 
 int64_same(8, PHP_INT_SIZE, 'PHP integer width');
+$expectedVersion = getenv('JOOMENGINE_EXPECTED_PHP_VERSION');
+int64_check(is_string($expectedVersion) && $expectedVersion !== '', 'expected PHP release is provided by the manifest');
+int64_same($expectedVersion, PHP_VERSION, 'runtime matches the pinned PHP release');
 int64_same('9223372036854775807', (string) PHP_INT_MAX, 'maximum signed integer');
 int64_same('-9223372036854775808', (string) PHP_INT_MIN, 'minimum signed integer');
 
@@ -76,6 +79,24 @@ $object = (object) ['value' => PHP_INT_MAX];
 $reference = &$object->value;
 int64_same(PHP_INT_MAX, $reference, 'object and reference copy');
 int64_same(PHP_INT_MAX, (static fn (int $value): int => $value)(PHP_INT_MAX), 'typed argument and return');
+
+$fiber = new Fiber(static function (int $initial): int {
+    int64_same(PHP_INT_MAX, $initial, 'fiber start argument');
+    $resumed = Fiber::suspend(PHP_INT_MIN);
+    int64_same(PHP_INT_MAX, $resumed, 'fiber resume argument');
+    return PHP_INT_MIN;
+});
+int64_same(PHP_INT_MIN, $fiber->start(PHP_INT_MAX), 'fiber suspension value');
+int64_check($fiber->isSuspended(), 'fiber suspends');
+int64_same(null, $fiber->resume(PHP_INT_MAX), 'fiber resume completes');
+int64_same(PHP_INT_MIN, $fiber->getReturn(), 'fiber return value');
+$throwingFiber = new Fiber(static function (): void {
+    Fiber::suspend(PHP_INT_MAX);
+    throw new LogicException('fiber exception');
+});
+int64_same(PHP_INT_MAX, $throwingFiber->start(), 'throwing fiber suspension value');
+int64_throws(static fn () => $throwingFiber->resume(), LogicException::class, 'fiber exception propagation');
+int64_check($throwingFiber->isTerminated(), 'throwing fiber terminates');
 
 $numbers = [PHP_INT_MIN, PHP_INT_MAX, 9007199254740993];
 int64_same($numbers, json_decode(json_encode($numbers, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR), 'PHP JSON integer round trip');

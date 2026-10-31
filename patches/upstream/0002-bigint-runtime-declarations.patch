@@ -1,0 +1,305 @@
+diff --git a/packages/php-cgi-wasm/PhpCgiWebBase.d.mts b/packages/php-cgi-wasm/PhpCgiWebBase.d.mts
+index cba6a2f..8499e91 100644
+--- a/packages/php-cgi-wasm/PhpCgiWebBase.d.mts
++++ b/packages/php-cgi-wasm/PhpCgiWebBase.d.mts
+@@ -6,5 +6,5 @@ export class PhpCgiWebBase extends PhpCgiBase {
+ 	startTransaction(): Promise<void>;
+ 	commitTransaction(readOnly?: boolean): Promise<void>;
+ 	refresh(): Promise<import('./public.d.ts').PhpBinaryRuntime>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-cgi-wasm/public.d.ts b/packages/php-cgi-wasm/public.d.ts
+index 3e1db79..d611c61 100644
+--- a/packages/php-cgi-wasm/public.d.ts
++++ b/packages/php-cgi-wasm/public.d.ts
+@@ -1,7 +1,8 @@
+ export type PhpRuntimeVersion = '8.0' | '8.1' | '8.2' | '8.3' | '8.4' | '8.5';
+ /** @deprecated Select a runtime package instead. */
+ export type PhpRuntimeVariant = never;
+-export type PhpRuntimeValue = object | string | number | boolean | Uint8Array | null | undefined | void;
++/** PHP integers outside JavaScript safe integer range use bigint; Wasm pointers remain numbers. */
++export type PhpRuntimeValue = object | string | number | bigint | boolean | Uint8Array | null | undefined | void;
+ export type PhpTemplateValue = PhpRuntimeValue | Array<PhpRuntimeValue>;
+ 
+ export interface PhpPreloadFile {
+@@ -33,7 +34,7 @@ export interface PhpRuntimeArgs {
+ 	interactive?: boolean;
+ 	script?: string;
+ 	code?: string;
+-	shared?: Record<string, object | string | number | boolean | Function | undefined>;
++	shared?: Record<string, object | string | number | bigint | boolean | Function | undefined>;
+ 	ENV?: Record<string, string>;
+ 	locateFile?: (path: string, directory?: string) => string | URL | undefined;
+ 	files?: PhpPreloadFile[];
+@@ -44,7 +45,7 @@ export interface PhpRuntimeArgs {
+ 	persist?: object | boolean;
+ 	staticFS?: boolean;
+ 	vHosts?: PhpVhost[];
+-	[key: string]: object | string | number | boolean | Function | undefined;
++	[key: string]: object | string | number | bigint | boolean | Function | undefined;
+ }
+ 
+ export type PhpRuntimeFactory<Args = PhpRuntimeArgs> = ((args: Args) => PhpBinaryRuntime | Promise<PhpBinaryRuntime>)
+@@ -159,7 +160,7 @@ export interface PhpCgiRuntimeArgs {
+ 	notFound?: PhpNotFoundHook;
+ 	sharedLibs?: Array<string | URL | PhpSharedLibrary>;
+ 	dynamicLibs?: Array<string | URL | PhpSharedLibrary>;
+-	actions?: Record<string, (...params: Array<string | number | boolean | object | undefined>) => PhpRuntimeValue | Promise<PhpRuntimeValue>>;
++	actions?: Record<string, (...params: Array<string | number | bigint | boolean | object | undefined>) => PhpRuntimeValue | Promise<PhpRuntimeValue>>;
+ 	files?: PhpPreloadFile[];
+ 	autoTransaction?: boolean;
+ 	maxRequestAge?: number;
+diff --git a/packages/php-cli-wasm/PhpBase.d.mts b/packages/php-cli-wasm/PhpBase.d.mts
+index 57fa458..f4f5fa1 100644
+--- a/packages/php-cli-wasm/PhpBase.d.mts
++++ b/packages/php-cli-wasm/PhpBase.d.mts
+@@ -8,7 +8,8 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
+ 	phpArgs: PhpRuntimeArgs;
+-	queue: Array<[Function, Array<string | number | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | boolean | Error) => void, boolean?]>;
++	shared: Record<string, PhpRuntimeValue>;
++	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+ 	binary: Promise<PhpBinaryRuntime>;
+ 	onerror: (event?: Event) => void;
+ 	onoutput: (event?: Event) => void;
+diff --git a/packages/php-cli-wasm/PhpCliWeb.d.mts b/packages/php-cli-wasm/PhpCliWeb.d.mts
+index 34a72f5..6a73d31 100644
+--- a/packages/php-cli-wasm/PhpCliWeb.d.mts
++++ b/packages/php-cli-wasm/PhpCliWeb.d.mts
+@@ -11,5 +11,5 @@ export class PhpCliWeb extends PhpBase<[flags?: string[]], void> {
+ 	provideInput(line: string): Promise<void>;
+ 	run(flags?: string[]): Promise<number>;
+ 	refresh(): Promise<void>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-cli-wasm/public.d.ts b/packages/php-cli-wasm/public.d.ts
+index f0dbd40..6f8df55 100644
+--- a/packages/php-cli-wasm/public.d.ts
++++ b/packages/php-cli-wasm/public.d.ts
+@@ -1,7 +1,8 @@
+ export type PhpRuntimeVersion = '8.0' | '8.1' | '8.2' | '8.3' | '8.4' | '8.5';
+ /** @deprecated Select a runtime package instead. */
+ export type PhpRuntimeVariant = never;
+-export type PhpRuntimeValue = object | string | number | boolean | Uint8Array | null | undefined | void;
++/** PHP integers outside JavaScript safe integer range use bigint; Wasm pointers remain numbers. */
++export type PhpRuntimeValue = object | string | number | bigint | boolean | Uint8Array | null | undefined | void;
+ export type PhpTemplateValue = PhpRuntimeValue | Array<PhpRuntimeValue>;
+ 
+ export interface PhpPreloadFile {
+@@ -33,7 +34,7 @@ export interface PhpRuntimeArgs {
+ 	interactive?: boolean;
+ 	script?: string;
+ 	code?: string;
+-	shared?: Record<string, object | string | number | boolean | Function | undefined>;
++	shared?: Record<string, object | string | number | bigint | boolean | Function | undefined>;
+ 	ENV?: Record<string, string>;
+ 	locateFile?: (path: string, directory?: string) => string | URL | undefined;
+ 	files?: PhpPreloadFile[];
+@@ -44,7 +45,7 @@ export interface PhpRuntimeArgs {
+ 	persist?: object | boolean;
+ 	staticFS?: boolean;
+ 	vHosts?: PhpVhost[];
+-	[key: string]: object | string | number | boolean | Function | undefined;
++	[key: string]: object | string | number | bigint | boolean | Function | undefined;
+ }
+ 
+ export type PhpRuntimeFactory<Args = PhpRuntimeArgs> = ((args: Args) => PhpBinaryRuntime | Promise<PhpBinaryRuntime>)
+diff --git a/packages/php-dbg-wasm/PhpBase.d.mts b/packages/php-dbg-wasm/PhpBase.d.mts
+index 57fa458..f4f5fa1 100644
+--- a/packages/php-dbg-wasm/PhpBase.d.mts
++++ b/packages/php-dbg-wasm/PhpBase.d.mts
+@@ -8,7 +8,8 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
+ 	phpArgs: PhpRuntimeArgs;
+-	queue: Array<[Function, Array<string | number | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | boolean | Error) => void, boolean?]>;
++	shared: Record<string, PhpRuntimeValue>;
++	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+ 	binary: Promise<PhpBinaryRuntime>;
+ 	onerror: (event?: Event) => void;
+ 	onoutput: (event?: Event) => void;
+diff --git a/packages/php-dbg-wasm/PhpDbgWeb.d.mts b/packages/php-dbg-wasm/PhpDbgWeb.d.mts
+index 1737626..2b205da 100644
+--- a/packages/php-dbg-wasm/PhpDbgWeb.d.mts
++++ b/packages/php-dbg-wasm/PhpDbgWeb.d.mts
+@@ -28,5 +28,5 @@ export class PhpDbgWeb extends PhpBase<[], void> {
+ 	dumpBacktrace(): Promise<Array<{filename: string, lineNo: number, frame: number}>>;
+ 	switchFrame(frame: number): Promise<number>;
+ 	refresh(): Promise<void>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-dbg-wasm/public.d.ts b/packages/php-dbg-wasm/public.d.ts
+index f0dbd40..6f8df55 100644
+--- a/packages/php-dbg-wasm/public.d.ts
++++ b/packages/php-dbg-wasm/public.d.ts
+@@ -1,7 +1,8 @@
+ export type PhpRuntimeVersion = '8.0' | '8.1' | '8.2' | '8.3' | '8.4' | '8.5';
+ /** @deprecated Select a runtime package instead. */
+ export type PhpRuntimeVariant = never;
+-export type PhpRuntimeValue = object | string | number | boolean | Uint8Array | null | undefined | void;
++/** PHP integers outside JavaScript safe integer range use bigint; Wasm pointers remain numbers. */
++export type PhpRuntimeValue = object | string | number | bigint | boolean | Uint8Array | null | undefined | void;
+ export type PhpTemplateValue = PhpRuntimeValue | Array<PhpRuntimeValue>;
+ 
+ export interface PhpPreloadFile {
+@@ -33,7 +34,7 @@ export interface PhpRuntimeArgs {
+ 	interactive?: boolean;
+ 	script?: string;
+ 	code?: string;
+-	shared?: Record<string, object | string | number | boolean | Function | undefined>;
++	shared?: Record<string, object | string | number | bigint | boolean | Function | undefined>;
+ 	ENV?: Record<string, string>;
+ 	locateFile?: (path: string, directory?: string) => string | URL | undefined;
+ 	files?: PhpPreloadFile[];
+@@ -44,7 +45,7 @@ export interface PhpRuntimeArgs {
+ 	persist?: object | boolean;
+ 	staticFS?: boolean;
+ 	vHosts?: PhpVhost[];
+-	[key: string]: object | string | number | boolean | Function | undefined;
++	[key: string]: object | string | number | bigint | boolean | Function | undefined;
+ }
+ 
+ export type PhpRuntimeFactory<Args = PhpRuntimeArgs> = ((args: Args) => PhpBinaryRuntime | Promise<PhpBinaryRuntime>)
+diff --git a/packages/php-wasm/PhpBase.d.mts b/packages/php-wasm/PhpBase.d.mts
+index 57fa458..f4f5fa1 100644
+--- a/packages/php-wasm/PhpBase.d.mts
++++ b/packages/php-wasm/PhpBase.d.mts
+@@ -8,7 +8,8 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
+ 	phpArgs: PhpRuntimeArgs;
+-	queue: Array<[Function, Array<string | number | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | boolean | Error) => void, boolean?]>;
++	shared: Record<string, PhpRuntimeValue>;
++	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+ 	binary: Promise<PhpBinaryRuntime>;
+ 	onerror: (event?: Event) => void;
+ 	onoutput: (event?: Event) => void;
+diff --git a/packages/php-wasm/PhpWebBase.d.mts b/packages/php-wasm/PhpWebBase.d.mts
+index 058aace..1c0d0e8 100644
+--- a/packages/php-wasm/PhpWebBase.d.mts
++++ b/packages/php-wasm/PhpWebBase.d.mts
+@@ -6,5 +6,5 @@ export class PhpWebBase extends PhpBase<[phpCode: string], void> {
+ 	startTransaction(): Promise<void>;
+ 	commitTransaction(readOnly?: boolean): Promise<void>;
+ 	refresh(): Promise<void>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-wasm/PhpWebview.d.mts b/packages/php-wasm/PhpWebview.d.mts
+index 0d98b11..59e7a06 100644
+--- a/packages/php-wasm/PhpWebview.d.mts
++++ b/packages/php-wasm/PhpWebview.d.mts
+@@ -6,5 +6,5 @@ export class PhpWebview extends PhpBase<[phpCode: string], void> {
+ 	startTransaction(): Promise<void>;
+ 	commitTransaction(readOnly?: boolean): Promise<void>;
+ 	refresh(): Promise<void>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-wasm/PhpWorker.d.mts b/packages/php-wasm/PhpWorker.d.mts
+index 35149ad..67ad06d 100644
+--- a/packages/php-wasm/PhpWorker.d.mts
++++ b/packages/php-wasm/PhpWorker.d.mts
+@@ -6,5 +6,5 @@ export class PhpWorker extends PhpBase<[phpCode: string], void> {
+ 	startTransaction(): Promise<void>;
+ 	commitTransaction(readOnly?: boolean): Promise<void>;
+ 	refresh(): Promise<void>;
+-	_enqueue(callback: (...params: Array<string | number | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
++	_enqueue(callback: (...params: Array<string | number | bigint | boolean | object | undefined>) => Promise<PhpRuntimeValue>, params?: Array<string | number | bigint | boolean | object | undefined>, readOnly?: boolean): Promise<PhpRuntimeValue>;
+ }
+diff --git a/packages/php-wasm/public.d.ts b/packages/php-wasm/public.d.ts
+index f0dbd40..6f8df55 100644
+--- a/packages/php-wasm/public.d.ts
++++ b/packages/php-wasm/public.d.ts
+@@ -1,7 +1,8 @@
+ export type PhpRuntimeVersion = '8.0' | '8.1' | '8.2' | '8.3' | '8.4' | '8.5';
+ /** @deprecated Select a runtime package instead. */
+ export type PhpRuntimeVariant = never;
+-export type PhpRuntimeValue = object | string | number | boolean | Uint8Array | null | undefined | void;
++/** PHP integers outside JavaScript safe integer range use bigint; Wasm pointers remain numbers. */
++export type PhpRuntimeValue = object | string | number | bigint | boolean | Uint8Array | null | undefined | void;
+ export type PhpTemplateValue = PhpRuntimeValue | Array<PhpRuntimeValue>;
+ 
+ export interface PhpPreloadFile {
+@@ -33,7 +34,7 @@ export interface PhpRuntimeArgs {
+ 	interactive?: boolean;
+ 	script?: string;
+ 	code?: string;
+-	shared?: Record<string, object | string | number | boolean | Function | undefined>;
++	shared?: Record<string, object | string | number | bigint | boolean | Function | undefined>;
+ 	ENV?: Record<string, string>;
+ 	locateFile?: (path: string, directory?: string) => string | URL | undefined;
+ 	files?: PhpPreloadFile[];
+@@ -44,7 +45,7 @@ export interface PhpRuntimeArgs {
+ 	persist?: object | boolean;
+ 	staticFS?: boolean;
+ 	vHosts?: PhpVhost[];
+-	[key: string]: object | string | number | boolean | Function | undefined;
++	[key: string]: object | string | number | bigint | boolean | Function | undefined;
+ }
+ 
+ export type PhpRuntimeFactory<Args = PhpRuntimeArgs> = ((args: Args) => PhpBinaryRuntime | Promise<PhpBinaryRuntime>)
+diff --git a/source/PhpBase.mjs b/source/PhpBase.mjs
+index bf479d0..99fe518 100644
+--- a/source/PhpBase.mjs
++++ b/source/PhpBase.mjs
+@@ -436,7 +436,7 @@ export class PhpBase extends EventTarget
+ 	/**
+ 	 * Evaluates an interpolated PHP expression and returns its value.
+ 	 * @param {string[]} fragments Template literal string fragments.
+-	 * @param {...(object|string|number|boolean|null)} values Values to interpolate into the PHP expression.
++	 * @param {...(object|string|number|bigint|boolean|null)} values Values to interpolate into the PHP expression.
+ 	 * @returns {Promise<PhpRuntimeValue>} Resolves with the decoded PHP expression result.
+ 	 */
+ 	async x(fragments, ...values)
+@@ -493,7 +493,7 @@ export class PhpBase extends EventTarget
+ 	/**
+ 	 * Executes an interpolated PHP script without decoding the result.
+ 	 * @param {string[]} fragments Template literal string fragments.
+-	 * @param {...(object|string|number|boolean|null)} values Values to interpolate into the PHP script.
++	 * @param {...(object|string|number|bigint|boolean|null)} values Values to interpolate into the PHP script.
+ 	 * @returns {Promise<PhpRuntimeValue>} Resolves with the script execution result.
+ 	 */
+ 	async r(fragments, ...values)
+diff --git a/source/globals.d.ts b/source/globals.d.ts
+index 7714cb0..1ebeb01 100644
+--- a/source/globals.d.ts
++++ b/source/globals.d.ts
+@@ -16,19 +16,19 @@ declare type PhpRuntimeFactory = ((args: PhpRuntimeArgs) => object | Promise<obj
+ 
+ declare type PhpRuntimeVersion = '8.0' | '8.1' | '8.2' | '8.3' | '8.4' | '8.5';
+ 
+-declare type PhpQueueParam = string | number | boolean | object | undefined;
+-declare type PhpMessageParam = string | number | boolean | object | null | undefined;
+-declare type PhpRuntimeValue = object | string | number | boolean | Uint8Array | null | undefined | void;
++declare type PhpQueueParam = string | number | bigint | boolean | object | undefined;
++declare type PhpMessageParam = string | number | bigint | boolean | object | null | undefined;
++declare type PhpRuntimeValue = object | string | number | bigint | boolean | Uint8Array | null | undefined | void;
+ declare type PhpQueueParams = PhpQueueParam[];
+ declare type PhpMessageParams = PhpMessageParam[];
+ declare type PhpQueueResolve = (value?: PhpRuntimeValue) => void;
+-declare type PhpQueueReject = (reason?: object | string | number | boolean | Error) => void;
++declare type PhpQueueReject = (reason?: object | string | number | bigint | boolean | Error) => void;
+ declare type PhpQueuedCallback = (...params: PhpQueueParams) => Promise<PhpRuntimeValue>;
+ declare type PhpActionHandler = (...params: PhpQueueParams) => PhpRuntimeValue | Promise<PhpRuntimeValue>;
+ declare type PhpEventHook = (event: Event) => boolean | void;
+ declare type PhpRuntimeHook = (request: RuntimeRequest, response?: Response) => void;
+ declare type PhpNotFoundHook = (request: RuntimeRequest) => Response | string | undefined;
+-declare type PhpSharedValue = object | string | number | boolean | PhpActionHandler | undefined;
++declare type PhpSharedValue = object | string | number | bigint | boolean | PhpActionHandler | undefined;
+ 
+ declare type OutputTarget = EventTarget;
+ 
+@@ -97,7 +97,7 @@ declare interface PhpRuntimeArgs {
+ 	persist?: object | boolean;
+ 	staticFS?: boolean;
+ 	vHosts?: PhpVhostList;
+-	[key: string]: object | string | number | boolean | Function | undefined;
++	[key: string]: object | string | number | bigint | boolean | Function | undefined;
+ }
+ 
+ // Native modules are generated beside the wrappers at build time.

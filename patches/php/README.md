@@ -22,6 +22,12 @@ The patches:
 - Bound explicit stream read buffers and random byte allocations before a
   64-bit length can truncate into a smaller allocation; compare write limits
   before narrowing them to the actual input length.
+- Preserve int64 SQLite callback arguments and results, and use PHP's integer
+  bounds when converting Intl date parser timestamps.
+- Check multibyte offsets, widths and padding before converting to the wasm32
+  address size; bound fixed-width character counts before multiplying to bytes.
+- Reject ZIP read lengths and OpenSSL derived-key buffer lengths that cannot
+  fit a wasm32 PHP string before allocating their buffers.
 
 `tests/php/core.php` covers arithmetic and overflow, hash keys with equal low
 32 bits, PHP value copying, serialization, JSON, binary packing, dates outside

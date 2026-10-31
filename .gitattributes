@@ -1,0 +1,2 @@
+# Unified diffs contain required context whitespace. Application is checked separately.
+*.patch -whitespace

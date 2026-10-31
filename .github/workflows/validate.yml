@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: int64-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -55,6 +59,7 @@ jobs:
           node-version: '24.5.0'
           cache: npm
       - name: Install test tooling
+        timeout-minutes: 20
         run: |
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium firefox webkit
@@ -62,6 +67,7 @@ jobs:
           docker compose version
       - name: Build pinned PHP and matching extensions
         run: |
+          set -euo pipefail
           mkdir -p logs
           bash scripts/build.sh "$PHP_VERSION" 2>&1 | tee "logs/build-php${PHP_VERSION}.log"
       - name: Validate patched bridge source contracts
@@ -79,10 +85,14 @@ jobs:
         run: node scripts/verify-artifact.mjs "dist/verified/php-$PHP_VERSION" "$PHP_VERSION"
       - name: Exercise embedded, CLI, CGI and debugger runtimes
         timeout-minutes: 15
-        run: node tests/run-runtime.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/node-php${PHP_VERSION}.log"
+        run: |
+          set -euo pipefail
+          node tests/run-runtime.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/node-php${PHP_VERSION}.log"
       - name: Exercise Chromium, Firefox and WebKit
         timeout-minutes: 30
-        run: node tests/browser-test.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/browser-php${PHP_VERSION}.log"
+        run: |
+          set -euo pipefail
+          node tests/browser-test.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/browser-php${PHP_VERSION}.log"
       - name: Upload verified archive
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

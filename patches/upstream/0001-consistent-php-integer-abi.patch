@@ -1,0 +1,30 @@
+diff --git a/Makefile b/Makefile
+index ba38eeb..5e2d56d 100755
+--- a/Makefile
++++ b/Makefile
+@@ -150,7 +150,7 @@ STATIC_LIB_CONFIG=
+ SHARED_LIB_CONFIG=
+ # Configure's link probes load the same side modules as the final PHP runtime.
+ # They must provide the Asyncify globals required by those libraries too.
+-PHP_CONFIGURE_VARS=LDFLAGS='-sASYNCIFY=${ASYNCIFY}'
++PHP_CONFIGURE_VARS=CPPFLAGS='-DZEND_WASM_INT64=1' LDFLAGS='-sASYNCIFY=${ASYNCIFY}'
+ 
+ ## More Options
+ builder_resolve_path = $(if $(strip $(1)),$(if $(filter /% ~%,$(1)),$(1),$(abspath ${PHP_BUILDER_DIR}/$(1))))
+@@ -263,6 +263,8 @@ EXTRA_FLAGS+= -s EMULATE_FUNCTION_POINTER_CASTS=1
+ endif
+ 
+ EXTRA_CFLAGS?=
++EXTRA_CFLAGS+= -DZEND_WASM_INT64=1
++EXTRA_FLAGS+= -DZEND_WASM_INT64=1
+ ZEND_EXTRA_LIBS=
+ SKIP_LIBS=
+ PHP_ASSET_LIST=
+@@ -426,6 +428,7 @@ third_party/php${PHP_VERSION}-src/configured: ${PHP_CONFIGURE_STAMP} ${ENV_FILE}
+ 	${DOCKER_RUN_IN_PHP} emconfigure ./buildconf --force
+ 	${DOCKER_RUN} mkdir -p ${PHP_CONFIGURE_CACHE_DIR}
+ 	${DOCKER_RUN_IN_PHP} emconfigure ./configure --cache-file=/src/${PHP_CONFIGURE_CACHE} ${PHP_CONFIGURE_ARGS}
++	${DOCKER_RUN_IN_PHP} bash -c 'printf "\n#ifndef ZEND_WASM_INT64\n#define ZEND_WASM_INT64 1\n#endif\n" >> main/php_config.h'
+ 	${DOCKER_RUN_IN_PHP} scripts/dev/credits
+ 	${DOCKER_RUN_IN_PHP} touch /src/third_party/php${PHP_VERSION}-src/configured
+ 

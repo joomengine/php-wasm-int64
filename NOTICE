@@ -1,0 +1,21 @@
+PHP-WASM int64
+Copyright 2026 JoomEngine contributors
+
+This repository contains build tooling, patches, and validation for a modified
+distribution of PHP-WASM. The underlying runtime is Sean Morris's PHP-WASM
+project, https://github.com/seanmorris/php-wasm. Its upstream copyright,
+license, and notice files remain applicable to the corresponding code.
+
+PHP and Zend Engine sources are maintained by the PHP Group and Zend
+contributors, https://github.com/php/php-src. Vrzno is maintained by Sean
+Morris and contributors, https://github.com/seanmorris/vrzno. Emscripten and
+the bundled native libraries retain their respective copyright and license
+terms. This repository's LICENSE does not relicense those components.
+
+The WordPress Playground project's existing wasm32 builds with 64-bit PHP
+integers informed the technical investigation. WordPress is not a runtime
+dependency of this project. Any copied upstream implementation must retain
+its applicable attribution and license.
+
+Distributed runtime archives must retain the notices and licenses of their
+included upstream components alongside this notice.

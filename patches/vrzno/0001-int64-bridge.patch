@@ -1,0 +1,568 @@
+diff --git a/js/vrzno_array_current.js b/js/vrzno_array_current.js
+index dce5f3e..d4fd104 100644
+--- a/js/vrzno_array_current.js
++++ b/js/vrzno_array_current.js
+@@ -5,7 +5,7 @@
+  * @function vrzno_js_array_current
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @param {number} resultAddress Address of a caller-owned zval receiving the converted
+  * value.
+  * @returns {void}
+diff --git a/js/vrzno_array_valid.js b/js/vrzno_array_valid.js
+index 181ddae..577a5b7 100644
+--- a/js/vrzno_array_valid.js
++++ b/js/vrzno_array_valid.js
+@@ -4,7 +4,7 @@
+  * @function vrzno_js_array_valid
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @returns {number} One for an in-range position; zero otherwise.
+  */
+ let target = Module.targets.get(targetId);
+diff --git a/js/vrzno_index_has.js b/js/vrzno_index_has.js
+index c5dc5d6..664c590 100644
+--- a/js/vrzno_index_has.js
++++ b/js/vrzno_index_has.js
+@@ -5,7 +5,7 @@
+  * @function vrzno_js_index_has
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @param {number} checkEmpty Nonzero selects PHP truthiness; zero selects
+  * non-null/non-undefined membership.
+  * @returns {boolean|number} Truth value, coerced to a C integer; zero after a forwarded
+diff --git a/js/vrzno_index_read.js b/js/vrzno_index_read.js
+index 250d184..9385b84 100644
+--- a/js/vrzno_index_read.js
++++ b/js/vrzno_index_read.js
+@@ -5,7 +5,7 @@
+  * @function vrzno_js_index_read
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @param {number} resultAddress Address of a caller-owned zval receiving the converted
+  * value.
+  * @returns {void}
+diff --git a/js/vrzno_index_unset.js b/js/vrzno_index_unset.js
+index 65ee582..e4e8736 100644
+--- a/js/vrzno_index_unset.js
++++ b/js/vrzno_index_unset.js
+@@ -5,7 +5,7 @@
+  * @function vrzno_js_index_unset
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @returns {void}
+  */
+ try
+diff --git a/js/vrzno_index_write.js b/js/vrzno_index_write.js
+index 0e13f71..af9a8c1 100644
+--- a/js/vrzno_index_write.js
++++ b/js/vrzno_index_write.js
+@@ -5,7 +5,7 @@
+  * @function vrzno_js_index_write
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+  * address.
+- * @param {number} index Signed, zero-based numeric property or array index.
++ * @param {bigint} index Signed 64-bit numeric property or array index.
+  * @param {number} valueAddress Address of a borrowed PHP value, valid for this call.
+  * @returns {void}
+  */
+diff --git a/js/vrzno_init.js b/js/vrzno_init.js
+index 0369686..8714776 100644
+--- a/js/vrzno_init.js
++++ b/js/vrzno_init.js
+@@ -86,29 +86,32 @@ Module.vrznoPhpTruthy = value => !(
+ 	|| value === null
+ 	|| value === false
+ 	|| value === 0
++	|| value === 0n
+ 	|| (typeof value === 'string' && value.length === 0)
+ 	|| value === '0'
+ );
+ /**
+- * Recognizes canonical signed 32-bit integer strings as PHP numeric keys. Leading
++ * Recognizes canonical signed 64-bit integer strings as PHP numeric keys. Leading
+  * zeros, noncanonical spellings, and other key types are preserved.
+  *
+  * @param {*} key Property key supplied to a PHP-array proxy.
+  * @returns {*} Numeric key when representable, otherwise the unchanged key.
+  */
+ Module.vrznoNormalizeArrayKey = key => {
+-	if(typeof key !== 'string')
++	if(typeof key !== 'string' || key.length > 20 || !/^(?:0|-?[1-9][0-9]*)$/.test(key))
+ 	{
+ 		return key;
+ 	}
+ 
+-	const numericKey = Number(key);
+-	return Number.isInteger(numericKey)
+-		&& numericKey >= -2147483648
+-		&& numericKey <= 2147483647
+-		&& String(numericKey) === key
+-		? numericKey
+-		: key;
++	const numericKey = BigInt(key);
++	if(numericKey < -9223372036854775808n || numericKey > 9223372036854775807n)
++	{
++		return key;
++	}
++
++	return numericKey >= -9007199254740991n && numericKey <= 9007199254740991n
++		? Number(numericKey)
++		: numericKey;
+ };
+ 
+ const origZval = Symbol('origZval');
+diff --git a/js/vrzno_json.js b/js/vrzno_json.js
+new file mode 100644
+index 0000000..8469cf4
+--- /dev/null
++++ b/js/vrzno_json.js
+@@ -0,0 +1,78 @@
++/**
++ * Reads PHP-generated JSON without first rounding integer tokens through Number.
++ * PHP emits integral floats with a fractional suffix for this transport, so only
++ * native integer values outside the JavaScript safe range become BigInt.
++ *
++ * @param {string} source JSON produced by php_json_encode_zval().
++ * @returns {*} Detached JSON values with exact integer tokens.
++ */
++Module.vrznoParseJson = source => {
++	let offset = 0;
++	const whitespace = () => {
++		while(offset < source.length && /[\x20\t\n\r]/.test(source[offset])) offset++;
++	};
++	const fail = () => { throw new SyntaxError(`Invalid PHP bridge JSON at offset ${offset}`); };
++	const string = () => {
++		const start = offset++;
++		while(offset < source.length)
++		{
++			const character = source[offset++];
++			if(character === '"') return JSON.parse(source.slice(start, offset));
++			if(character === '\\') offset++;
++		}
++		return fail();
++	};
++	const value = (depth = 0) => {
++		if(depth > 512) return fail();
++		whitespace();
++		const character = source[offset];
++		if(character === '"') return string();
++		if(character === '[' || character === '{')
++		{
++			const array = character === '[';
++			const result = array ? [] : {};
++			const closing = array ? ']' : '}';
++			offset++;
++			whitespace();
++			if(source[offset] === closing) { offset++; return result; }
++			while(offset < source.length)
++			{
++				let key;
++				if(!array)
++				{
++					whitespace();
++					if(source[offset] !== '"') return fail();
++					key = string();
++					whitespace();
++					if(source[offset++] !== ':') return fail();
++				}
++				const entry = value(depth + 1);
++				if(array) result.push(entry);
++				else Object.defineProperty(result, key, {value: entry, enumerable: true, configurable: true, writable: true});
++				whitespace();
++				const next = source[offset++];
++				if(next === closing) return result;
++				if(next !== ',') return fail();
++			}
++			return fail();
++		}
++		for(const [literal, result] of [['true', true], ['false', false], ['null', null]])
++		{
++			if(source.startsWith(literal, offset)) { offset += literal.length; return result; }
++		}
++		const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(offset));
++		if(!match) return fail();
++		const token = match[0];
++		offset += token.length;
++		if(!/[.eE]/.test(token))
++		{
++			const integer = BigInt(token);
++			if(integer < -9007199254740991n || integer > 9007199254740991n) return integer;
++		}
++		return Number(token);
++	};
++	const result = value();
++	whitespace();
++	if(offset !== source.length) return fail();
++	return result;
++};
+diff --git a/js/vrzno_php_arrays.js b/js/vrzno_php_arrays.js
+index c7b46a3..ca5d0c9 100644
+--- a/js/vrzno_php_arrays.js
++++ b/js/vrzno_php_arrays.js
+@@ -46,11 +46,12 @@ Module.marshalZArray = ((za, zv) => {
+ 			switch(typeof prop)
+ 			{
+ 				case 'number':
++				case 'bigint':
+ 					return !! Module.ccall(
+ 						'vrzno_expose_dimension_pointer'
+ 						, 'number'
+-						, ['number', 'number']
+-						, [za, prop]
++						, ['number', 'bigint']
++						, [za, BigInt(prop)]
+ 					);
+ 
+ 				case 'string':
+@@ -140,11 +141,12 @@ Module.marshalZArray = ((za, zv) => {
+ 				case 'symbol':
+ 					return Reflect.get(target, prop);
+ 				case 'number':
++				case 'bigint':
+ 					retPtr = Module.ccall(
+ 						'vrzno_expose_dimension_pointer'
+ 						, 'number'
+-						, ['number', 'number']
+-						, [za, prop]
++						, ['number', 'bigint']
++						, [za, BigInt(prop)]
+ 					);
+ 					break;
+ 
+@@ -203,11 +205,12 @@ Module.marshalZArray = ((za, zv) => {
+ 			switch(typeof prop)
+ 			{
+ 				case 'number':
++				case 'bigint':
+ 					retPtr = Module.ccall(
+ 						'vrzno_expose_dimension_pointer'
+ 						, 'number'
+-						, ['number', 'number']
+-						, [za, prop]
++						, ['number', 'bigint']
++						, [za, BigInt(prop)]
+ 					);
+ 					break;
+ 
+diff --git a/js/vrzno_properties_json.js b/js/vrzno_properties_json.js
+index fdff3dd..f8a0b57 100644
+--- a/js/vrzno_properties_json.js
++++ b/js/vrzno_properties_json.js
+@@ -1,6 +1,7 @@
+ /**
+- * Serializes enumerable target properties for PHP inspection; functions and
+- * unserializable targets produce an empty object.
++ * Takes the same detached JSON snapshot as ordinary property inspection, preserving
++ * signed 64-bit BigInts as exact JSON integer tokens. Functions and targets that
++ * cannot be serialized, including cyclic targets, produce an empty object.
+  *
+  * @function vrzno_js_properties_json
+  * @param {number} targetId Registered JavaScript target handle; this is not a Wasm
+@@ -13,14 +14,80 @@ let json;
+ 
+ if(typeof target === 'function')
+ {
+-	json = JSON.stringify({});
++	json = '{}';
+ }
+ else
+ {
+ 	try
+-	{ json = JSON.stringify({...target}); }
++	{
++		// Record emitted string values by occurrence, including ordinary strings.
++		// Matching the ledger after serialization avoids sentinel collisions with
++		// user values or property names, and evaluates getters/toJSON only once.
++		const strings = [];
++		const serialized = JSON.stringify({...target}, (key, value) => {
++			if(value !== null && typeof value === 'object')
++			{
++				if(typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value))
++				{
++					// A raw JSON string bypasses the ordinary replacer string path.
++					if(value.rawJSON[0] === '"')
++					{
++						strings.push({text: JSON.parse(value.rawJSON), integer: false});
++					}
++					return value;
++				}
++
++				let boxedString = false;
++				try { String.prototype.valueOf.call(value); boxedString = true; }
++				catch {}
++				if(boxedString)
++				{
++					// JSON.stringify applies ToString to genuine String wrappers.
++					// Convert once here so custom conversion is not evaluated twice.
++					value = String(value);
++				}
++				else
++				{
++					// Genuine BigInt wrappers are unboxed by JSON.stringify too.
++					try { value = BigInt.prototype.valueOf.call(value); }
++					catch {}
++				}
++			}
++
++			if(typeof value === 'bigint')
++			{
++				if(value < -9223372036854775808n || value > 9223372036854775807n)
++				{
++					throw new RangeError('JavaScript BigInt is outside the signed 64-bit PHP integer range');
++				}
++				const text = String(value);
++				strings.push({text, integer: true});
++				return text;
++			}
++
++			if(typeof value === 'string') strings.push({text: value, integer: false});
++			return value;
++		});
++
++		let position = 0;
++		json = serialized.replace(/"(?:[^"\\]|\\[\s\S])*"/g, (token, offset) => {
++			let following = offset + token.length;
++			while(following < serialized.length && /[\x20\t\n\r]/.test(serialized[following])) following++;
++			if(serialized[following] === ':') return token;
++			const entry = strings[position++];
++			if(!entry || JSON.parse(token) !== entry.text)
++			{
++				throw new TypeError('Unexpected JSON string ordering during PHP property inspection');
++			}
++			return entry.integer ? entry.text : token;
++		});
++		if(position !== strings.length)
++		{
++			throw new TypeError('Incomplete JSON string ordering during PHP property inspection');
++		}
++	}
+ 	catch
+-	{ json = JSON.stringify({}); }
++	{ json = '{}'; }
+ }
+ 
+ const str = String(json);
+diff --git a/js/vrzno_run.js b/js/vrzno_run.js
+index 2e27362..6ab494c 100644
+--- a/js/vrzno_run.js
++++ b/js/vrzno_run.js
+@@ -1,5 +1,5 @@
+ /**
+- * Calls a named global JS function with JSON-decoded arguments and stringifies its
++ * Calls a named global JS function with losslessly decoded arguments and stringifies its
+  * result. JavaScript errors are forwarded to PHP through vrznoThrowRuntimeError().
+  *
+  * @function vrzno_js_run
+@@ -19,7 +19,7 @@ try
+ 	{
+ 		throw new TypeError(`${funcName} is not a global JavaScript function`);
+ 	}
+-	const args = JSON.parse(argJson || '[]') || [];
++	const args = Module.vrznoParseJson(argJson || '[]') || [];
+ 
+ 	const str = String(func(...args));
+ 	const len = lengthBytesUTF8(str) + 1;
+diff --git a/js/vrzno_timeout.js b/js/vrzno_timeout.js
+index 408d62f..3a299fe 100644
+--- a/js/vrzno_timeout.js
++++ b/js/vrzno_timeout.js
+@@ -3,13 +3,13 @@
+  * releases the owned callback after the attempt.
+  *
+  * @function vrzno_js_timeout
+- * @param {number} milliseconds Nonnegative delay in milliseconds, already validated by
++ * @param {bigint} milliseconds Nonnegative delay in milliseconds, already validated by
+  * C.
+  * @param {number} callbackAddress Owned callback zval; ownership transfers to the
+  * registry until timeout or shutdown.
+  * @returns {void}
+  */
+-const timeout = milliseconds;
++const timeout = Number(milliseconds);
+ const ownedCallback = callbackAddress;
+ const generation = Module.vrznoGeneration;
+ const token = {};
+diff --git a/js/vrzno_values.js b/js/vrzno_values.js
+index 29f8b1d..32d4bbc 100644
+--- a/js/vrzno_values.js
++++ b/js/vrzno_values.js
+@@ -121,13 +121,17 @@ Module.zvalToJS = (zv => {
+ 		case IS_FALSE:
+ 			return false;
+ 
+-		case IS_LONG:
+-			return Module.ccall(
++		case IS_LONG: {
++			const integer = Module.ccall(
+ 				'vrzno_expose_long'
+-				, 'number'
++				, 'bigint'
+ 				, ['number']
+ 				, [zv]
+ 			);
++			return integer >= -9007199254740991n && integer <= 9007199254740991n
++				? Number(integer)
++				: integer;
++		}
+ 
+ 		case IS_DOUBLE:
+ 			valPtr = Module.ccall(
+@@ -229,8 +233,8 @@ Module.consumeZval = zv => {
+ 
+ /**
+  * Initializes a caller-provided zval from JS. Existing same-generation PHP wrappers
+- * are copied back; other objects/functions receive retained target handles. BigInt and
+- * Symbol values raise PHP TypeError.
++ * are copied back; other objects/functions receive retained target handles. Signed
++ * 64-bit BigInts become PHP integers; out-of-range BigInts and Symbols raise TypeError.
+  *
+  * @param {*} value Value to convert.
+  * @param {WasmAddress} rv Writable caller-owned zval storage; its old value must already be released.
+@@ -290,13 +294,13 @@ Module.jsToZval = ((value, rv) => {
+ 	}
+ 	else if(typeof value === 'number')
+ 	{
+-		if(Number.isInteger(value) && value >= -2147483648 && value <= 2147483647)
++		if(Number.isSafeInteger(value))
+ 		{
+ 			Module.ccall(
+ 				'vrzno_expose_create_long'
+-				, 'number'
+-				, ['number', 'number']
+-				, [value, rv]
++				, null
++				, ['bigint', 'number']
++				, [BigInt(value), rv]
+ 			);
+ 		}
+ 		else
+@@ -309,6 +313,15 @@ Module.jsToZval = ((value, rv) => {
+ 			);
+ 		}
+ 	}
++	else if(typeof value === 'bigint' && value >= -9223372036854775808n && value <= 9223372036854775807n)
++	{
++		Module.ccall(
++			'vrzno_expose_create_long'
++			, null
++			, ['bigint', 'number']
++			, [value, rv]
++		);
++	}
+ 	else if(typeof value === "string") // Generate string zval
+ 	{
+ 		const len = lengthBytesUTF8(value) + 1;
+@@ -327,7 +340,9 @@ Module.jsToZval = ((value, rv) => {
+ 	}
+ 	else if(typeof value === 'bigint' || typeof value === 'symbol')
+ 	{
+-		const message = `Cannot convert JavaScript ${typeof value} to PHP`;
++		const message = typeof value === 'bigint'
++			? 'JavaScript BigInt is outside the signed 64-bit PHP integer range'
++			: `Cannot convert JavaScript ${typeof value} to PHP`;
+ 		const len = lengthBytesUTF8(message) + 1;
+ 		const loc = _malloc(len);
+ 		stringToUTF8(message, loc, len);
+diff --git a/vrzno_expose.c b/vrzno_expose.c
+index 1f566d3..cced763 100644
+--- a/vrzno_expose.c
++++ b/vrzno_expose.c
+@@ -17,7 +17,7 @@ void EMSCRIPTEN_KEEPALIVE vrzno_expose_create_null(zval *rv)
+ 	ZVAL_NULL(rv);
+ }
+ 
+-void EMSCRIPTEN_KEEPALIVE vrzno_expose_create_long(long value, zval *rv)
++void EMSCRIPTEN_KEEPALIVE vrzno_expose_create_long(zend_long value, zval *rv)
+ {
+ 	ZVAL_LONG(rv, value);
+ }
+@@ -324,9 +324,9 @@ zval* EMSCRIPTEN_KEEPALIVE vrzno_expose_read_property(zend_object *zo, char *nam
+ 	return owned;
+ }
+ 
+-zval* EMSCRIPTEN_KEEPALIVE vrzno_expose_dimension_pointer(zend_array *za, unsigned offset)
++zval* EMSCRIPTEN_KEEPALIVE vrzno_expose_dimension_pointer(zend_array *za, zend_long offset)
+ {
+-	return zend_hash_index_find(za, offset);
++	return zend_hash_index_find(za, (zend_ulong) offset);
+ }
+ 
+ zval* EMSCRIPTEN_KEEPALIVE vrzno_expose_array_value_at(zend_array *za, uint32_t offset)
+diff --git a/vrzno_functions.c b/vrzno_functions.c
+index 725c2c8..df10fbb 100644
+--- a/vrzno_functions.c
++++ b/vrzno_functions.c
+@@ -30,7 +30,7 @@ PHP_FUNCTION(vrzno_eval)
+ PHP_FUNCTION(vrzno_run)
+ {
+ 	zend_string *retval;
+-	zend_long opt = 0;
++	int opt = PHP_JSON_PRESERVE_ZERO_FRACTION;
+ 
+ 	char   *js_funcname     = "";
+ 	size_t  js_funcname_len = sizeof(js_funcname) - 1;
+@@ -54,7 +54,13 @@ PHP_FUNCTION(vrzno_run)
+ 	php_json_encoder  encoder;
+ 	php_json_encode_init(&encoder);
+ 	encoder.max_depth = PHP_JSON_PARSER_DEFAULT_DEPTH;
+-	php_json_encode_zval(&buf, js_argv, opt, &encoder);
++	if(php_json_encode_zval(&buf, js_argv, opt, &encoder) == FAILURE)
++	{
++		if(js_argv == &empty_argv) zval_ptr_dtor(&empty_argv);
++		smart_str_free(&buf);
++		if(!EG(exception)) zend_value_error("Unable to encode arguments for vrzno_run()");
++		RETURN_THROWS();
++	}
+ 
+ 	smart_str_0(&buf);
+ 	char *js_args = ZSTR_VAL(buf.s);
+@@ -91,9 +97,9 @@ PHP_FUNCTION(vrzno_timeout)
+ 		Z_PARAM_ZVAL(callback)
+ 	ZEND_PARSE_PARAMETERS_END();
+ 
+-	if(timeout < 0)
++	if(timeout < 0 || timeout > INT32_MAX)
+ 	{
+-		zend_argument_value_error(1, "must be greater than or equal to 0");
++		zend_argument_value_error(1, "must be between 0 and 2147483647 milliseconds");
+ 		RETURN_THROWS();
+ 	}
+ 
+diff --git a/vrzno_js.h.in b/vrzno_js.h.in
+index fab3abd..c7d8a3d 100644
+--- a/vrzno_js.h.in
++++ b/vrzno_js.h.in
+@@ -5,6 +5,7 @@ EM_JS(void, vrzno_js_shutdown, (void), {
+ 
+ EM_JS(void, vrzno_js_init, (void), {
+ #include "js/vrzno_init.js"
++#include "js/vrzno_json.js"
+ #include "vrzno_weakermap.js"
+ #include "js/vrzno_ownership.js"
+ #include "js/vrzno_php_objects.js"
+diff --git a/vrzno_private.h b/vrzno_private.h
+index cd0cf51..46d579f 100644
+--- a/vrzno_private.h
++++ b/vrzno_private.h
+@@ -41,6 +41,10 @@
+ # error "Vrzno requires Emscripten's wasm32 memory model"
+ #endif
+ 
++#if SIZEOF_ZEND_LONG != 8
++# error "The JoomEngine int64 bridge requires 64-bit Zend integers"
++#endif
++
+ /* For compatibility with older PHP versions. */
+ #ifndef ZEND_PARSE_PARAMETERS_NONE
+ # define ZEND_PARSE_PARAMETERS_NONE() \

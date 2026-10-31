@@ -1,0 +1,15 @@
+{
+  "name": "@joomengine/php-wasm-int64-validation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Validation tooling for JoomEngine PHP-WASM int64 distributions",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=24.5.0" },
+  "scripts": {
+    "check": "bash scripts/check.sh",
+    "test:runtime": "node tests/run-runtime.mjs",
+    "test:browser": "node tests/browser-test.mjs"
+  },
+  "devDependencies": { "playwright": "1.59.1" }
+}

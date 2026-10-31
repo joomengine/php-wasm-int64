@@ -1,0 +1,70 @@
+name: Release verified PHP int64
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: int64-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
+  release:
+    name: Publish verified archives
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release identity
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: int64-php-*
+          path: release
+          merge-multiple: true
+      - name: Verify all three archives
+        run: |
+          cd release
+          for minor in 8.3 8.4 8.5; do
+            archive="php-wasm-int64-${GITHUB_REF_NAME#v}-php${minor}.tar.gz"
+            test -s "$archive"
+            test -s "$archive.sha256"
+            sha256sum --check "$archive.sha256"
+          done
+          test "$(find . -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 3
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'This release already exists; published versions are never overwritten.' >&2
+            exit 1
+          fi
+          printf '%s\n' \
+            'PHP 8.3, 8.4 and 8.5 with native 64-bit PHP integers and wasm32 memory addressing.' \
+            '' \
+            'Every archive passed the Node embedded/CLI/CGI/debugger checks and Chromium, Firefox and WebKit validation at this tag.' \
+            'Each archive includes matching extensions, PHP headers, build provenance, checksums and upstream notices.' \
+            'Use the runtime and extensions from the same archive; upstream 32-bit PHP extension binaries are not ABI compatible.' \
+            > release-notes.txt
+          gh release create "$GITHUB_REF_NAME" release/*.tar.gz release/*.sha256 \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "PHP-WASM int64 ${GITHUB_REF_NAME}" --notes-file release-notes.txt
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 6
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

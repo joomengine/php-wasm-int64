@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "git": [
+    {
+      "name": "zlib",
+      "repository": "https://github.com/madler/zlib.git",
+      "ref": "v1.3.1",
+      "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+      "directory": "zlib"
+    },
+    {
+      "name": "libxml2",
+      "repository": "https://github.com/GNOME/libxml2.git",
+      "ref": "v2.9.10",
+      "commit": "41a34e1f4ffae2ce401600dbb5fe43f8fe402641",
+      "directory": "libxml2"
+    },
+    {
+      "name": "oniguruma",
+      "repository": "https://github.com/kkos/oniguruma.git",
+      "ref": "v6.9.9",
+      "commit": "e62a8e5ec123bb91651d297e6f72c84d53e3cff8",
+      "directory": "oniguruma"
+    },
+    {
+      "name": "openssl",
+      "repository": "https://github.com/openssl/openssl.git",
+      "ref": "OpenSSL_1_1_1-stable",
+      "commit": "b372b1f76450acdfed1e2301a39810146e28b02c",
+      "directory": "openssl"
+    },
+    {
+      "name": "libzip",
+      "repository": "https://github.com/nih-at/libzip.git",
+      "ref": "v1.10.1",
+      "commit": "210b09d9d2d0f4c0bbc64f92ad45c1ac53598fec",
+      "directory": "libzip"
+    },
+    {
+      "name": "libpng",
+      "repository": "https://github.com/pnggroup/libpng.git",
+      "ref": "v1.6.41",
+      "commit": "ba980b8f0cfbc270ba1c4a663455e2fe8bad91d2",
+      "directory": "libpng"
+    }
+  ],
+  "archives": [
+    {
+      "name": "libiconv",
+      "url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz",
+      "sha256": "8f74213b56238c85a50a5329f77e06198771e70dd9a739779f4c02f65d971313",
+      "directory": "libiconv-1.17",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "freetype",
+      "url": "https://download-mirror.savannah.gnu.org/releases/freetype/freetype-2.10.0.tar.gz",
+      "sha256": "955e17244e9b38adb0c98df66abb50467312e6bb70eac07e49ce6bd1a20e809a",
+      "directory": "freetype-2.10.0",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "libjpeg",
+      "url": "https://ijg.org/files/jpegsrc.v9f.tar.gz",
+      "sha256": "04705c110cb2469caa79fb71fba3d7bf834914706e9641a4589485c1f832565b",
+      "directory": "jpeg-9f",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "libwebp",
+      "url": "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.4.0.tar.gz",
+      "sha256": "61f873ec69e3be1b99535634340d5bde750b2e4447caa1db9f61be3fd49ab1e5",
+      "directory": "libwebp-1.4.0",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "sqlite",
+      "url": "https://sqlite.org/2024/sqlite-autoconf-3460100.tar.gz",
+      "sha256": "67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071",
+      "directory": "sqlite3.46.1-src",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "icu-source",
+      "url": "https://github.com/unicode-org/icu/releases/download/release-72-1/icu4c-72_1-src.tgz",
+      "sha256": "a2d2d38217092a7ed56635e34467f92f976b370e20182ad325edea6681a71d68",
+      "directory": "icu-72-1/icu",
+      "stripComponents": 1,
+      "format": "tar"
+    },
+    {
+      "name": "icu-data",
+      "url": "https://github.com/unicode-org/icu/releases/download/release-72-1/icu4c-72_1-data.zip",
+      "sha256": "ee19f876507d6c23d9e0a2b631096f6b0eaa6fa61728c33a89efdb55e3385dea",
+      "directory": "icu-72-1/icu/source",
+      "stripComponents": 0,
+      "format": "zip",
+      "kind": "icu-data"
+    }
+  ]
+}

@@ -36,7 +36,8 @@ EOF
 printf -v compose 'docker compose -f %q -f %q' \
   "$UPSTREAM_DIRECTORY/docker-compose.yml" "$UPSTREAM_DIRECTORY/docker-compose.int64.yml"
 make_arguments=(--no-print-directory -C "$UPSTREAM_DIRECTORY" ENV_FILE=.env.int64 \
-  "CPU_COUNT=$BUILD_JOBS" "MAX_LOAD=$BUILD_JOBS" MAKE_SHUFFLE= "DOCKER_COMPOSE=$compose")
+  "PHP_VERSION_FULL=$PHP_VERSION" "CPU_COUNT=$BUILD_JOBS" "MAX_LOAD=$BUILD_JOBS" \
+  MAKE_SHUFFLE= "DOCKER_COMPOSE=$compose")
 targets=(web-mjs worker-mjs webview-mjs node-mjs \
   web-cgi-mjs worker-cgi-mjs webview-cgi-mjs node-cgi-mjs \
   web-cli-mjs node-cli-mjs web-dbg-mjs node-dbg-mjs)

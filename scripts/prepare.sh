@@ -19,9 +19,14 @@ fetch_git "$(jq -er '.upstream.repository' "$INT64_ROOT/versions.json")" "$UPSTR
 apply_patch_series "$UPSTREAM_DIRECTORY" "$INT64_ROOT/patches/upstream"
 
 fetch_git 'https://github.com/php/php-src.git' "$PHP_COMMIT" "$PHP_DIRECTORY"
-# Sean's fiber/runtime patches precede our scalar ABI changes.
-apply_patch_file "$UPSTREAM_DIRECTORY" "$UPSTREAM_DIRECTORY/patch/php$PHP_MINOR.patch"
+# Verify that provenance describes the selected source, not only its minor ABI.
+source_version=$(sed -n 's/^#define PHP_VERSION "\([^"]*\)"$/\1/p' "$PHP_DIRECTORY/main/php_version.h")
+[[ $source_version == "$PHP_VERSION" ]] || die "PHP source version mismatch: expected $PHP_VERSION, got $source_version"
+# Ported Sean fiber/runtime patches precede our scalar ABI changes. The original
+# upstream patch targets older releases and must not be applied to these sources.
+apply_patch_file "$PHP_DIRECTORY" "$INT64_ROOT/patches/runtime/$PHP_MINOR.patch"
 apply_patch_file "$PHP_DIRECTORY" "$INT64_ROOT/patches/php/$PHP_MINOR.patch"
+mkdir -p "$PHP_DIRECTORY/preload/Zend"
 touch "$PHP_DIRECTORY/patched"
 
 fetch_git "$(jq -er '.vrzno.repository' "$INT64_ROOT/versions.json")" "$VRZNO_COMMIT" "$VRZNO_DIRECTORY"

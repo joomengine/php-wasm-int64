@@ -108,6 +108,7 @@ jobs:
           path: dist/php-${{ matrix.php }}
           key: ${{ steps.compiled-cache.outputs.cache-primary-key }}
       - name: Package and extract the distribution
+        id: package
         run: |
           mkdir -p logs
           bash scripts/package.sh "$PHP_VERSION"
@@ -137,6 +138,28 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+      - name: Retain unverified archives for failed-runtime debugging
+        if: failure() && steps.package.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unverified-php-${{ matrix.php }}
+          path: |
+            dist/releases/*-php${{ matrix.php }}.tar.gz
+            dist/releases/*-php${{ matrix.php }}.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+      - name: Collect configure diagnostics
+        if: always()
+        run: |
+          if [[ -d .build ]]; then
+            mkdir -p logs
+            log_list="$RUNNER_TEMP/int64-configure-logs-${PHP_VERSION}.list"
+            find .build -type f -name config.log -print0 > "$log_list"
+            if [[ -s "$log_list" ]]; then
+              tar --create --gzip --file logs/configure-logs.tar.gz --null --files-from "$log_list"
+            fi
+          fi
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

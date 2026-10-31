@@ -1,5 +1,5 @@
 diff --git a/Zend/zend_build.h b/Zend/zend_build.h
-index c604fb31..f5ff6303 100644
+index c604fb311a74efa099cf666e3b5c9b58be30f1be..f5ff6303697669aad2bfd26d08df2a8dec31fd70 100644
 --- a/Zend/zend_build.h
 +++ b/Zend/zend_build.h
 @@ -40,7 +40,12 @@
@@ -18,10 +18,10 @@ index c604fb31..f5ff6303 100644
  
  #endif
 diff --git a/Zend/zend_compile.c b/Zend/zend_compile.c
-index 9f04123d..33ae6270 100644
+index 22b59948b01a65ca1ee6eeda56781631e865127c..0598c1274c4125e830135f0a3fda8edd10b4ad86 100644
 --- a/Zend/zend_compile.c
 +++ b/Zend/zend_compile.c
-@@ -10896,7 +10896,7 @@ static void zend_eval_const_expr(zend_ast **ast_ptr) /* {{{ */
+@@ -10925,7 +10925,7 @@ static void zend_eval_const_expr(zend_ast **ast_ptr) /* {{{ */
  				} else if (Z_TYPE_P(dim) != IS_STRING || is_numeric_string(Z_STRVAL_P(dim), Z_STRLEN_P(dim), &offset, NULL, 1) != IS_LONG) {
  					return;
  				}
@@ -31,7 +31,7 @@ index 9f04123d..33ae6270 100644
  				}
  				c = (uint8_t) Z_STRVAL_P(container)[offset];
 diff --git a/Zend/zend_execute.c b/Zend/zend_execute.c
-index 73f79957..d2a3d609 100644
+index b5e937928ffa25591ca7f8a3a7629809efe94a59..2c1486ea3c0fd9bbbb8c1954c096769b1782730e 100644
 --- a/Zend/zend_execute.c
 +++ b/Zend/zend_execute.c
 @@ -1858,7 +1858,16 @@ static zend_never_inline void zend_assign_to_string_offset(zval *str, zval *dim,
@@ -80,7 +80,7 @@ index 73f79957..d2a3d609 100644
  			} else {
  				return 1;
 diff --git a/Zend/zend_long.h b/Zend/zend_long.h
-index 3796f1c5..0bc69ca4 100644
+index 3796f1c5ababb7d6e2ea4631b85cef3f65fa5462..0bc69ca4f3837594cf00f79b24707ed85865d6fd 100644
 --- a/Zend/zend_long.h
 +++ b/Zend/zend_long.h
 @@ -22,6 +22,15 @@
@@ -100,7 +100,7 @@ index 3796f1c5..0bc69ca4 100644
  #if defined(__x86_64__) || defined(__LP64__) || defined(_LP64) || defined(_WIN64)
  # define ZEND_ENABLE_ZVAL_LONG64 1
 diff --git a/Zend/zend_multiply.h b/Zend/zend_multiply.h
-index a99e858b..eb65e60f 100644
+index b3f0086009f47e4eba65d6bcba011114da411b9b..88416d76bdac86d6748d51fc3f070547901337d3 100644
 --- a/Zend/zend_multiply.h
 +++ b/Zend/zend_multiply.h
 @@ -22,7 +22,20 @@
@@ -126,7 +126,7 @@ index a99e858b..eb65e60f 100644
  #define ZEND_SIGNED_MULTIPLY_LONG(a, b, lval, dval, usedval) do {	\
  	long __tmpvar;		 											\
 diff --git a/Zend/zend_range_check.h b/Zend/zend_range_check.h
-index 9c822493..ffb0d573 100644
+index 9c822493fa3ef0d96c454569f68825b35f5cf6f4..ffb0d573235279a9bf48aaa09cca6d540f83a581 100644
 --- a/Zend/zend_range_check.h
 +++ b/Zend/zend_range_check.h
 @@ -59,9 +59,9 @@
@@ -144,7 +144,7 @@ index 9c822493..ffb0d573 100644
  
  #endif /* ZEND_RANGE_CHECK_H */
 diff --git a/ext/date/lib/timelib.h b/ext/date/lib/timelib.h
-index 4582fcfd..0f8054d1 100644
+index ef57a7ee783f0e2a586d9d4117e006d264975461..3214355efd49db54a8f0eafe13a0f4291b3c46a1 100644
 --- a/ext/date/lib/timelib.h
 +++ b/ext/date/lib/timelib.h
 @@ -109,7 +109,7 @@ typedef unsigned __int64  uint64_t;
@@ -157,7 +157,7 @@ index 4582fcfd..0f8054d1 100644
  typedef uint64_t timelib_ulong;
  # define TIMELIB_LONG_MAX INT64_MAX
 diff --git a/ext/intl/dateformat/dateformat_parse.c b/ext/intl/dateformat/dateformat_parse.c
-index 69aeff88..91004e6f 100644
+index cd6c2c35978c2bc9462af7c14a1639f703f52b38..94f6ca8549b63bb773f5b271084aa9cbabda8d1e 100644
 --- a/ext/intl/dateformat/dateformat_parse.c
 +++ b/ext/intl/dateformat/dateformat_parse.c
 @@ -51,7 +51,7 @@ static void internal_parse_to_timestamp(IntlDateFormatter_object *dfo, char* tex
@@ -170,10 +170,10 @@ index 69aeff88..91004e6f 100644
  	} else {
  		ZVAL_LONG(return_value, (zend_long)result);
 diff --git a/ext/mbstring/mbstring.c b/ext/mbstring/mbstring.c
-index 558441b0..5e0aac36 100644
+index 2ee6306bfb42907b1eec220dd6a25dcc24f1e917..9a7a96394d8c5289b7dd1f24c7e883b112e099b9 100644
 --- a/ext/mbstring/mbstring.c
 +++ b/ext/mbstring/mbstring.c
-@@ -1861,7 +1861,7 @@ static inline bool php_mb_is_no_encoding_utf8(enum mbfl_no_encoding no_enc)
+@@ -1887,7 +1887,7 @@ static inline bool php_mb_is_no_encoding_utf8(enum mbfl_no_encoding no_enc)
  	return (no_enc >= mbfl_no_encoding_utf8 && no_enc <= mbfl_no_encoding_utf8_sb);
  }
  
@@ -182,7 +182,7 @@ index 558441b0..5e0aac36 100644
  	if (offset < 0) {
  		unsigned char *pos = end;
  		while (offset < 0) {
-@@ -1892,7 +1892,7 @@ static size_t pointer_to_offset_utf8(unsigned char *start, unsigned char *pos) {
+@@ -1918,7 +1918,7 @@ static size_t pointer_to_offset_utf8(unsigned char *start, unsigned char *pos) {
  	return mb_fast_strlen_utf8(start, pos - start);
  }
  
@@ -191,7 +191,7 @@ index 558441b0..5e0aac36 100644
  {
  	size_t result;
  	zend_string *haystack_u8 = NULL, *needle_u8 = NULL;
-@@ -2125,16 +2125,17 @@ static zend_string* mb_get_substr(zend_string *input, size_t from, size_t len, c
+@@ -2151,16 +2151,17 @@ static zend_string* mb_get_substr(zend_string *input, size_t from, size_t len, c
  	unsigned int flag = enc->flag & (MBFL_ENCTYPE_SBCS | MBFL_ENCTYPE_WCS2 | MBFL_ENCTYPE_WCS4);
  	if (flag) {
  		/* The value of the flag is 2 if each codepoint takes 2 bytes, or 4 if 4 bytes */
@@ -213,7 +213,7 @@ index 558441b0..5e0aac36 100644
  		return zend_string_init_fast((const char*)in, len);
  	}
  
-@@ -2334,7 +2335,7 @@ PHP_FUNCTION(mb_substr)
+@@ -2370,7 +2371,7 @@ PHP_FUNCTION(mb_substr)
  	/* if "from" position is negative, count start position from the end
  	 * of the string */
  	if (from >= 0) {
@@ -222,7 +222,7 @@ index 558441b0..5e0aac36 100644
  	} else if (-from < mblen) {
  		real_from = mblen + from;
  	} else {
-@@ -2346,7 +2347,7 @@ PHP_FUNCTION(mb_substr)
+@@ -2382,7 +2383,7 @@ PHP_FUNCTION(mb_substr)
  	if (len_is_null) {
  		real_len = MBFL_SUBSTR_UNTIL_END;
  	} else if (len >= 0) {
@@ -231,7 +231,7 @@ index 558441b0..5e0aac36 100644
  	} else if (real_from < mblen && -len < mblen - real_from) {
  		real_len = (mblen - real_from) + len;
  	} else {
-@@ -2394,6 +2395,10 @@ PHP_FUNCTION(mb_strcut)
+@@ -2430,6 +2431,10 @@ PHP_FUNCTION(mb_strcut)
  		}
  	}
  
@@ -242,7 +242,7 @@ index 558441b0..5e0aac36 100644
  	/* if "length" position is negative, set it to the length
  	 * needed to stop that many chars from the end of the string
  	 */
-@@ -2404,7 +2409,11 @@ PHP_FUNCTION(mb_strcut)
+@@ -2440,7 +2445,11 @@ PHP_FUNCTION(mb_strcut)
  		}
  	}
  
@@ -255,7 +255,7 @@ index 558441b0..5e0aac36 100644
  		RETURN_EMPTY_STRING();
  	}
  
-@@ -2483,13 +2492,13 @@ PHP_FUNCTION(mb_strwidth)
+@@ -2521,13 +2530,13 @@ PHP_FUNCTION(mb_strwidth)
  	RETVAL_LONG(mb_get_strwidth(string, enc));
  }
  
@@ -271,7 +271,7 @@ index 558441b0..5e0aac36 100644
  	unsigned int to_skip = from;
  	size_t out_len = 0;
  	bool first_call = true, input_err = false;
-@@ -5538,10 +5547,15 @@ PHP_FUNCTION(mb_str_pad)
+@@ -5605,10 +5614,15 @@ PHP_FUNCTION(mb_str_pad)
  
  	/* If resulting string turns out to be shorter than input string,
  	   we simply copy the input and return. */
@@ -289,10 +289,10 @@ index 558441b0..5e0aac36 100644
  		zend_argument_value_error(3, "must be a non-empty string");
  		RETURN_THROWS();
 diff --git a/ext/mbstring/php_mbregex.c b/ext/mbstring/php_mbregex.c
-index 99dc91e3..2ba5baa4 100644
+index 34d5a5a291c2ca84d2bdc0f9dc5f9ac1d029c0c2..8a40bead170e3fe1b36d73fc1f21a3a79f3e5a16 100644
 --- a/ext/mbstring/php_mbregex.c
 +++ b/ext/mbstring/php_mbregex.c
-@@ -1576,7 +1576,7 @@ PHP_FUNCTION(mb_ereg_search_setpos)
+@@ -1589,7 +1589,7 @@ PHP_FUNCTION(mb_ereg_search_setpos)
  		position += Z_STRLEN(MBREX(search_str));
  	}
  
@@ -302,10 +302,10 @@ index 99dc91e3..2ba5baa4 100644
  		RETURN_THROWS();
  	}
 diff --git a/ext/openssl/openssl.c b/ext/openssl/openssl.c
-index 6f85e985..703992b3 100644
+index feda8442733837986775c78bf3013e26e16b3eef..7d8470a7fbc915e972c5393a932ea57831996017 100644
 --- a/ext/openssl/openssl.c
 +++ b/ext/openssl/openssl.c
-@@ -5282,6 +5282,10 @@ PHP_FUNCTION(openssl_pkey_derive)
+@@ -5322,6 +5322,10 @@ PHP_FUNCTION(openssl_pkey_derive)
  		zend_argument_value_error(3, "must be greater than or equal to 0");
  		RETURN_THROWS();
  	}
@@ -317,7 +317,7 @@ index 6f85e985..703992b3 100644
  	EVP_PKEY *pkey = php_openssl_pkey_from_zval(priv_key, 0, "", 0, 2);
  	if (!pkey) {
 diff --git a/ext/pdo_sqlite/sqlite_driver.c b/ext/pdo_sqlite/sqlite_driver.c
-index c933c34e..241e2262 100644
+index fbd0ba7293b4c6bcbee8914c2e3ae0548200deb0..c7447b3bfd9c66d1969c83a54beb98399b24e1ee 100644
 --- a/ext/pdo_sqlite/sqlite_driver.c
 +++ b/ext/pdo_sqlite/sqlite_driver.c
 @@ -355,7 +355,11 @@ static int do_callback(struct pdo_sqlite_fci *fc, zval *cb,
@@ -345,7 +345,7 @@ index c933c34e..241e2262 100644
  
  				case IS_NULL:
 diff --git a/ext/random/random.c b/ext/random/random.c
-index 57f8f183..4a45aed3 100644
+index 57f8f183b2867109b07efd57f01e72ceaad862ac..4a45aed3d5298f90f16df31b47ebcf4595f43ff3 100644
 --- a/ext/random/random.c
 +++ b/ext/random/random.c
 @@ -582,6 +582,11 @@ PHP_FUNCTION(random_bytes)
@@ -361,7 +361,7 @@ index 57f8f183..4a45aed3 100644
  
  	if (php_random_bytes_throw(ZSTR_VAL(bytes), size) == FAILURE) {
 diff --git a/ext/standard/file.c b/ext/standard/file.c
-index 5f6452e2..a1ef38b5 100644
+index 6d04569da64fe729a157ba94e86891ef6c04fe25..39e43595e72a615e9f2f3fe88949f1cbbe435314 100644
 --- a/ext/standard/file.c
 +++ b/ext/standard/file.c
 @@ -421,6 +421,11 @@ PHP_FUNCTION(file_get_contents)
@@ -376,7 +376,7 @@ index 5f6452e2..a1ef38b5 100644
  	context = php_stream_context_from_zval(zcontext, 0);
  
  	stream = php_stream_open_wrapper_ex(filename, "rb",
-@@ -918,6 +923,11 @@ PHPAPI PHP_FUNCTION(fgets)
+@@ -929,6 +934,11 @@ PHPAPI PHP_FUNCTION(fgets)
  			RETURN_THROWS();
  		}
  
@@ -388,7 +388,7 @@ index 5f6452e2..a1ef38b5 100644
  		str = zend_string_alloc(len, 0);
  		if (php_stream_get_line(stream, ZSTR_VAL(str), len, &line_len) == NULL) {
  			zend_string_efree(str);
-@@ -1022,7 +1032,7 @@ PHPAPI PHP_FUNCTION(fwrite)
+@@ -1033,7 +1043,7 @@ PHPAPI PHP_FUNCTION(fwrite)
  	} else if (maxlen <= 0) {
  		num_bytes = 0;
  	} else {
@@ -397,7 +397,7 @@ index 5f6452e2..a1ef38b5 100644
  	}
  
  	if (!num_bytes) {
-@@ -1647,6 +1657,11 @@ PHPAPI PHP_FUNCTION(fread)
+@@ -1658,6 +1668,11 @@ PHPAPI PHP_FUNCTION(fread)
  		RETURN_THROWS();
  	}
  
@@ -409,7 +409,7 @@ index 5f6452e2..a1ef38b5 100644
  	str = php_stream_read_to_str(stream, len);
  	if (!str) {
  		zval_ptr_dtor_str(return_value);
-@@ -1900,7 +1915,12 @@ PHP_FUNCTION(fgetcsv)
+@@ -1911,7 +1926,12 @@ PHP_FUNCTION(fgetcsv)
  			RETURN_THROWS();
  		}
  
@@ -424,7 +424,7 @@ index 5f6452e2..a1ef38b5 100644
  
  	if (len < 0) {
 diff --git a/ext/standard/streamsfuncs.c b/ext/standard/streamsfuncs.c
-index 134b9661..5c2e22b6 100644
+index 134b966107cf64f64e64b89f331d135e1763d5ef..5c2e22b67fb3ad59abf530eef69f00ac8873ea9d 100644
 --- a/ext/standard/streamsfuncs.c
 +++ b/ext/standard/streamsfuncs.c
 @@ -420,6 +420,11 @@ PHP_FUNCTION(stream_socket_recvfrom)
@@ -464,10 +464,10 @@ index 134b9661..5c2e22b6 100644
  
  	if ((buf = php_stream_get_record(stream, max_length, str, str_len))) {
 diff --git a/ext/standard/string.c b/ext/standard/string.c
-index 577efbed..7421d867 100644
+index 779dd6359d5c3495a5ab90f841dc2430f5351411..bd891275adc1fe005eb28deafbfb136b9252a6e8 100644
 --- a/ext/standard/string.c
 +++ b/ext/standard/string.c
-@@ -1753,7 +1753,7 @@ PHP_FUNCTION(strpos)
+@@ -1792,7 +1792,7 @@ PHP_FUNCTION(strpos)
  	if (offset < 0) {
  		offset += (zend_long)ZSTR_LEN(haystack);
  	}
@@ -476,7 +476,7 @@ index 577efbed..7421d867 100644
  		zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  		RETURN_THROWS();
  	}
-@@ -1786,7 +1786,7 @@ PHP_FUNCTION(stripos)
+@@ -1825,7 +1825,7 @@ PHP_FUNCTION(stripos)
  	if (offset < 0) {
  		offset += (zend_long)ZSTR_LEN(haystack);
  	}
@@ -485,7 +485,7 @@ index 577efbed..7421d867 100644
  		zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  		RETURN_THROWS();
  	}
-@@ -1817,20 +1817,20 @@ PHP_FUNCTION(strrpos)
+@@ -1856,20 +1856,20 @@ PHP_FUNCTION(strrpos)
  	ZEND_PARSE_PARAMETERS_END();
  
  	if (offset >= 0) {
@@ -509,7 +509,7 @@ index 577efbed..7421d867 100644
  			e = ZSTR_VAL(haystack) + ZSTR_LEN(haystack);
  		} else {
  			e = ZSTR_VAL(haystack) + ZSTR_LEN(haystack) + offset + ZSTR_LEN(needle);
-@@ -1867,7 +1867,7 @@ PHP_FUNCTION(strripos)
+@@ -1906,7 +1906,7 @@ PHP_FUNCTION(strripos)
  		   Can also avoid tolower emallocs */
  		char lowered;
  		if (offset >= 0) {
@@ -518,7 +518,7 @@ index 577efbed..7421d867 100644
  				zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  				RETURN_THROWS();
  			}
-@@ -1875,7 +1875,7 @@ PHP_FUNCTION(strripos)
+@@ -1914,7 +1914,7 @@ PHP_FUNCTION(strripos)
  			e = ZSTR_VAL(haystack) + ZSTR_LEN(haystack) - 1;
  		} else {
  			p = ZSTR_VAL(haystack);
@@ -527,7 +527,7 @@ index 577efbed..7421d867 100644
  				zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  				RETURN_THROWS();
  			}
-@@ -1893,7 +1893,7 @@ PHP_FUNCTION(strripos)
+@@ -1932,7 +1932,7 @@ PHP_FUNCTION(strripos)
  
  	haystack_dup = zend_string_tolower(haystack);
  	if (offset >= 0) {
@@ -536,7 +536,7 @@ index 577efbed..7421d867 100644
  			zend_string_release_ex(haystack_dup, 0);
  			zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  			RETURN_THROWS();
-@@ -1901,14 +1901,14 @@ PHP_FUNCTION(strripos)
+@@ -1940,14 +1940,14 @@ PHP_FUNCTION(strripos)
  		p = ZSTR_VAL(haystack_dup) + offset;
  		e = ZSTR_VAL(haystack_dup) + ZSTR_LEN(haystack);
  	} else {
@@ -553,16 +553,16 @@ index 577efbed..7421d867 100644
  			e = ZSTR_VAL(haystack_dup) + ZSTR_LEN(haystack);
  		} else {
  			e = ZSTR_VAL(haystack_dup) + ZSTR_LEN(haystack) + offset + ZSTR_LEN(needle);
-@@ -2017,7 +2017,7 @@ PHP_FUNCTION(chunk_split)
+@@ -2059,7 +2059,7 @@ PHP_FUNCTION(chunk_split)
  		RETURN_THROWS();
  	}
  
 -	if ((size_t)chunklen > ZSTR_LEN(str)) {
 +	if ((zend_ulong)chunklen > ZSTR_LEN(str)) {
  		/* to maintain BC, we must return original string + ending */
- 		result = zend_string_safe_alloc(ZSTR_LEN(str), 1, endlen, 0);
- 		memcpy(ZSTR_VAL(result), ZSTR_VAL(str), ZSTR_LEN(str));
-@@ -2054,12 +2054,12 @@ PHP_FUNCTION(substr)
+ 		result = zend_string_safe_falloc(ZSTR_LEN(str), 1, endlen, 0, /* fallible */ true);
+ 		if (UNEXPECTED(!result)) {
+@@ -2102,12 +2102,12 @@ PHP_FUNCTION(substr)
  		/* if "from" position is negative, count start position from the end
  		 * of the string
  		 */
@@ -577,7 +577,7 @@ index 577efbed..7421d867 100644
  		RETURN_EMPTY_STRING();
  	}
  
-@@ -2068,12 +2068,12 @@ PHP_FUNCTION(substr)
+@@ -2116,12 +2116,12 @@ PHP_FUNCTION(substr)
  			/* if "length" position is negative, set it to the length
  			 * needed to stop that many chars from the end of the string
  			 */
@@ -592,7 +592,7 @@ index 577efbed..7421d867 100644
  			l = (zend_long)ZSTR_LEN(str) - f;
  		}
  	} else {
-@@ -2140,7 +2140,7 @@ PHP_FUNCTION(substr_replace)
+@@ -2188,7 +2188,7 @@ PHP_FUNCTION(substr_replace)
  			if (f < 0) {
  				f = 0;
  			}
@@ -601,7 +601,7 @@ index 577efbed..7421d867 100644
  			f = ZSTR_LEN(str);
  		}
  		/* if "length" position is negative, set it to the length
-@@ -2153,7 +2153,7 @@ PHP_FUNCTION(substr_replace)
+@@ -2201,7 +2201,7 @@ PHP_FUNCTION(substr_replace)
  			}
  		}
  
@@ -610,20 +610,20 @@ index 577efbed..7421d867 100644
  			l = ZSTR_LEN(str);
  		}
  
-@@ -5173,6 +5173,12 @@ PHP_FUNCTION(str_repeat)
+@@ -5280,6 +5280,12 @@ PHP_FUNCTION(str_repeat)
  	if (ZSTR_LEN(input_str) == 0 || mult == 0)
  		RETURN_EMPTY_STRING();
  
-+	/* The multiplier can exceed size_t when PHP integers are 64-bit on wasm32. */
++	/* Reject before the multiplier is narrowed to the wasm32 allocation size. */
 +	if (UNEXPECTED((zend_ulong) mult > ZSTR_MAX_LEN / ZSTR_LEN(input_str))) {
-+		zend_argument_value_error(2, "produces a string exceeding the addressable string size");
++		zend_throw_error(NULL, "String size overflow");
 +		RETURN_THROWS();
 +	}
 +
  	/* Initialize the result string */
- 	result = zend_string_safe_alloc(ZSTR_LEN(input_str), mult, 0, 0);
- 	result_len = ZSTR_LEN(input_str) * mult;
-@@ -5386,7 +5392,7 @@ PHP_FUNCTION(substr_count)
+ 	result = zend_string_safe_falloc(ZSTR_LEN(input_str), mult, 0, /*persistent */ false, /* fallible */ true);
+ 	if (UNEXPECTED(!result)) {
+@@ -5497,7 +5503,7 @@ PHP_FUNCTION(substr_count)
  		if (offset < 0) {
  			offset += (zend_long)haystack_len;
  		}
@@ -632,7 +632,7 @@ index 577efbed..7421d867 100644
  			zend_argument_value_error(3, "must be contained in argument #1 ($haystack)");
  			RETURN_THROWS();
  		}
-@@ -5398,7 +5404,7 @@ PHP_FUNCTION(substr_count)
+@@ -5509,7 +5515,7 @@ PHP_FUNCTION(substr_count)
  		if (length < 0) {
  			length += haystack_len;
  		}
@@ -641,7 +641,7 @@ index 577efbed..7421d867 100644
  			zend_argument_value_error(4, "must be contained in argument #1 ($haystack)");
  			RETURN_THROWS();
  		}
-@@ -5446,7 +5452,7 @@ PHP_FUNCTION(str_pad)
+@@ -5557,7 +5563,7 @@ PHP_FUNCTION(str_pad)
  
  	/* If resulting string turns out to be shorter than input string,
  	   we simply copy the input and return. */
@@ -650,19 +650,19 @@ index 577efbed..7421d867 100644
  		RETURN_STR_COPY(input);
  	}
  
-@@ -5460,6 +5466,11 @@ PHP_FUNCTION(str_pad)
+@@ -5571,6 +5577,11 @@ PHP_FUNCTION(str_pad)
  		RETURN_THROWS();
  	}
  
 +	if (UNEXPECTED((zend_ulong) pad_length > ZSTR_MAX_LEN)) {
-+		zend_argument_value_error(2, "exceeds the addressable string size");
++		zend_throw_error(NULL, "String size overflow");
 +		RETURN_THROWS();
 +	}
 +
  	num_pad_chars = pad_length - ZSTR_LEN(input);
- 	result = zend_string_safe_alloc(1, ZSTR_LEN(input), num_pad_chars, 0);
- 	ZSTR_LEN(result) = 0;
-@@ -5788,7 +5799,7 @@ PHP_FUNCTION(str_split)
+ 	result = zend_string_safe_falloc(1, ZSTR_LEN(input), num_pad_chars, 0, /* falllible */ true);
+ 	if (UNEXPECTED(!result)) {
+@@ -5906,7 +5917,7 @@ PHP_FUNCTION(str_split)
  		RETURN_THROWS();
  	}
  
@@ -671,7 +671,7 @@ index 577efbed..7421d867 100644
  		if (0 == ZSTR_LEN(str)) {
  			RETURN_EMPTY_ARRAY();
  		}
-@@ -5874,12 +5885,16 @@ PHP_FUNCTION(substr_compare)
+@@ -5998,12 +6009,16 @@ PHP_FUNCTION(substr_compare)
  		offset = (offset < 0) ? 0 : offset;
  	}
  
@@ -691,10 +691,10 @@ index 577efbed..7421d867 100644
  	if (!cs) {
  		RETURN_LONG(zend_binary_strncmp(ZSTR_VAL(s1) + offset, (ZSTR_LEN(s1) - offset), ZSTR_VAL(s2), ZSTR_LEN(s2), cmp_len));
 diff --git a/ext/zip/php_zip.c b/ext/zip/php_zip.c
-index 0c1dfaf5..6790bf7b 100644
+index f1630192e601c5d4ec74d165556916a872b83c03..be72ffbbeafd89ae9fa1287c8de0a0afc222ea91 100644
 --- a/ext/zip/php_zip.c
 +++ b/ext/zip/php_zip.c
-@@ -1340,6 +1340,10 @@ PHP_FUNCTION(zip_entry_read)
+@@ -1344,6 +1344,10 @@ PHP_FUNCTION(zip_entry_read)
  	if (len <= 0) {
  		len = 1024;
  	}
@@ -705,7 +705,7 @@ index 0c1dfaf5..6790bf7b 100644
  
  	if (zr_rsrc->zf) {
  		buffer = zend_string_safe_alloc(1, len, 0, 0);
-@@ -2903,11 +2907,20 @@ static void php_zip_get_from(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
+@@ -2927,11 +2931,20 @@ static void php_zip_get_from(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
  		PHP_ZIP_STAT_INDEX(intern, index, 0, sb);
  	}
  

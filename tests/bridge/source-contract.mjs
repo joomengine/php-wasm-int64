@@ -1,13 +1,49 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
 
 if (!process.env.VRZNO_SOURCE_ROOT) {
   throw new Error('Set VRZNO_SOURCE_ROOT to the pinned, patched Vrzno source directory.');
 }
 const sourceRoot = resolve(process.env.VRZNO_SOURCE_ROOT);
-const source = name => readFileSync(resolve(sourceRoot, 'js', name), 'utf8');
+const embeddedSources = new Map();
+const compiledDirectory = mkdtempSync(resolve(tmpdir(), 'vrzno-embedded-'));
+after(() => rmSync(compiledDirectory, { recursive: true, force: true }));
+function source(name) {
+  if (embeddedSources.has(name)) return embeddedSources.get(name);
+  const body = readFileSync(resolve(sourceRoot, 'js', name), 'utf8');
+  // Match the C preprocessor stringification used by Emscripten's EM_JS.
+  // Compile and emit the resulting C string: preprocessing alone also misses
+  // escape sequences that C consumes before Emscripten receives the JS bytes.
+  const executable = resolve(compiledDirectory, name);
+  const result = spawnSync(process.env.BRIDGE_CC || 'cc', ['-Werror', '-x', 'c', '-', '-o', executable], {
+    input: '#include <stdio.h>\n#define EM_JS(result, name, arguments, ...) #__VA_ARGS__\n'
+      + `static const char embedded[] = EM_JS(void, bridge_contract, (void), {\n${body}\n});\n`
+      + 'int main(void) { return fputs(embedded, stdout) < 0; }\n',
+    encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(result.error, undefined, `${name}: host C compiler must be available`);
+  assert.equal(result.status, 0, `${name}: EM_JS stringification failed\n${result.stderr}`);
+  const execution = spawnSync(executable, [], { encoding: 'utf8', timeout: 10000 });
+  assert.equal(execution.status, 0, `${name}: compiled string emitter failed\n${execution.stderr}`);
+  const embedded = execution.stdout;
+  assert.ok(embedded.startsWith('{') && embedded.endsWith('}'), name);
+  const decoded = embedded.slice(1, -1);
+  embeddedSources.set(name, decoded);
+  return decoded;
+}
+
+test('changed EM_JS bodies survive C stringification and JavaScript parsing', () => {
+  for (const name of ['vrzno_init.js', 'vrzno_json.js', 'vrzno_values.js', 'vrzno_php_arrays.js',
+    'vrzno_array_current.js', 'vrzno_array_valid.js', 'vrzno_index_read.js', 'vrzno_index_write.js',
+    'vrzno_index_has.js', 'vrzno_index_unset.js', 'vrzno_timeout.js', 'vrzno_run.js',
+    'vrzno_properties_json.js']) {
+    assert.doesNotThrow(() => new Function(source(name)), name);
+  }
+});
 
 // A real Wasm i64 identity function checks the JS argument and return ABI.
 const wasm = new WebAssembly.Instance(new WebAssembly.Module(Uint8Array.of(
@@ -130,11 +166,13 @@ test('legacy JSON argument transport preserves types, nesting and exact int64 to
   const value = Module.vrznoParseJson('[9223372036854775807,-9223372036854775808,9007199254740993,9007199254740992.0,{"text":"9223372036854775807","nested":[true,false,null,"a\\\"b","\\u263a"]}]');
   assert.deepEqual(value, [9223372036854775807n, -9223372036854775808n, 9007199254740993n,
     9007199254740992, {text: '9223372036854775807', nested: [true, false, null, 'a"b', '☺']}]);
+  assert.deepEqual(Module.vrznoParseJson(' \t[\r\n-9223372036854775808, 1.5, 1e3]\n'),
+    [-9223372036854775808n, 1.5, 1000]);
   const prototype = Module.vrznoParseJson('{"__proto__":{"max":9223372036854775807}}');
   assert.equal(Object.getPrototypeOf(prototype), Object.prototype);
   assert.equal(Object.hasOwn(prototype, '__proto__'), true);
   assert.equal(prototype.__proto__.max, 9223372036854775807n);
-  for (const input of ['[1,]', '{"x":1,}', '01', '1e', 'true false', '"unfinished', '{x:1}', '[1 2]']) {
+  for (const input of ['[1,]', '{"x":1,}', '01', '1e', '1x2', '1.', 'true false', '"unfinished', '{x:1}', '[1 2]']) {
     assert.throws(() => Module.vrznoParseJson(input), SyntaxError, input);
   }
   const ordinary = [null, true, false, 0, -0, 1.5, 1e50, '\n\t"\\', [1, 2], {x: 'y'}];
@@ -171,6 +209,7 @@ test('object inspection snapshots preserve BigInt, nested JSON semantics and cyc
     max: 9223372036854775807n, min: -9223372036854775808n,
     same: '9223372036854775807', '9223372036854775807': '9223372036854775807',
     'a\u0000b': 9223372036854775807n,
+    'quoted"key\\': 'quote" backslash\\ escaped newline\n tab\t and unicode ☺',
     nested: [{text: '9223372036854775807', max: 9223372036854775807n}],
     get computed() { getterCalls++; return 9007199254740993n; },
     converted: {toJSON: () => ({value: 9223372036854775807n})},
@@ -181,6 +220,7 @@ test('object inspection snapshots preserve BigInt, nested JSON semantics and cyc
   assert.equal(actual.same, '9223372036854775807');
   assert.equal(actual['9223372036854775807'], '9223372036854775807');
   assert.equal(actual['a\u0000b'], 9223372036854775807n);
+  assert.equal(actual['quoted"key\\'], 'quote" backslash\\ escaped newline\n tab\t and unicode ☺');
   assert.deepEqual(actual.nested, [{text: '9223372036854775807', max: 9223372036854775807n}]);
   assert.equal(actual.computed, 9007199254740993n);
   assert.equal(actual.converted.value, 9223372036854775807n);

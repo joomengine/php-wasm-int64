@@ -16,18 +16,18 @@
   "php": [
     {
       "minor": "8.3",
-      "version": "8.3.11",
-      "commit": "acd31dfb9927e494c408a226edd12eca2a73b0e5"
+      "version": "8.3.36",
+      "commit": "5ba6ad519229ac09fc4fc74155c76bdca69ae0de"
     },
     {
       "minor": "8.4",
-      "version": "8.4.1",
-      "commit": "0454901ed1518cfb42bc77ac91728591b58c3e6e"
+      "version": "8.4.27",
+      "commit": "00d8bae801541db0d95a698e108bb4b1b273fe6e"
     },
     {
       "minor": "8.5",
-      "version": "8.5.2",
-      "commit": "ea75635f1daa18c0244190d2413dec21a3d26bad"
+      "version": "8.5.12",
+      "commit": "136e049ac10b032c83018e65b63b6df858943750"
     }
   ],
   "abi": {

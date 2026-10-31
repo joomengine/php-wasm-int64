@@ -121,10 +121,22 @@ foreach ([4294967296, PHP_INT_MAX] as $length) {
     }
     int64_extension_check($lengthRejected, 'OpenSSL did not reject an unrepresentable derived-key length before parsing keys');
 }
-$privateKey = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
-int64_extension_check($privateKey !== false, 'OpenSSL EC key generation failed');
-$publicKey = openssl_pkey_get_details($privateKey)['key'];
-int64_extension_check(strlen(openssl_pkey_derive($publicKey, $privateKey)) === 32, 'OpenSSL default derived-key length changed');
+// Public test-only key material; a fixed vector needs neither a config file nor key generation.
+$privateKey = <<<'PEM'
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIK/ll3HraGtCmH/ZmAn2WvlIwC1HFE1JJRR3Ml5uwGUNoAoGCCqGSM49
+AwEHoUQDQgAEybTprouJIQWAo9+ZMt32++z+USj2f2WWrfIkfvsfxFsrEnrXzgRF
+srQzgvcxxUBMsHJqXnn2KbS7t+RtvfoyPA==
+-----END EC PRIVATE KEY-----
+PEM;
+$publicKey = <<<'PEM'
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEybTprouJIQWAo9+ZMt32++z+USj2
+f2WWrfIkfvsfxFsrEnrXzgRFsrQzgvcxxUBMsHJqXnn2KbS7t+RtvfoyPA==
+-----END PUBLIC KEY-----
+PEM;
+int64_extension_check(bin2hex(openssl_pkey_derive($publicKey, $privateKey))
+    === 'cab77a043a5de21149d6988393d068e8e19aa654b6433c8f1fb8c9f2e91c54d5', 'OpenSSL default derived-key result changed');
 
 $pdo = class_exists(Pdo\Sqlite::class) ? new Pdo\Sqlite('sqlite::memory:') : new PDO('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

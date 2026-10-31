@@ -61,21 +61,55 @@ jobs:
       - name: Install test tooling
         timeout-minutes: 20
         run: |
+          set -euo pipefail
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/80-int64-downloads >/dev/null
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium firefox webkit
           docker version
           docker compose version
+      - name: Prepare pinned sources and validate the bridge
+        id: inputs
+        run: |
+          bash scripts/prepare.sh "$PHP_VERSION"
+          source scripts/common.sh
+          select_php "$PHP_VERSION"
+          printf 'fingerprint=%s\n' "$BUILD_FINGERPRINT" >> "$GITHUB_OUTPUT"
+          VRZNO_SOURCE_ROOT="$VRZNO_DIRECTORY" node --test tests/bridge/source-contract.mjs
+      - name: Restore compiled distribution for exact build inputs
+        id: compiled-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: dist/php-${{ matrix.php }}
+          key: compiled-v1-${{ runner.os }}-${{ runner.arch }}-php${{ matrix.php }}-${{ steps.inputs.outputs.fingerprint }}
       - name: Build pinned PHP and matching extensions
+        if: steps.compiled-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p logs
           bash scripts/build.sh "$PHP_VERSION" 2>&1 | tee "logs/build-php${PHP_VERSION}.log"
-      - name: Validate patched bridge source contracts
+      - name: Verify compiled distribution and build identity
+        env:
+          EXPECTED_FINGERPRINT: ${{ steps.inputs.outputs.fingerprint }}
         run: |
-          upstream_dir=$(bash scripts/workspace.sh "$PHP_VERSION")
-          VRZNO_SOURCE_ROOT="$(dirname "$upstream_dir")/vrzno" node --test tests/bridge/source-contract.mjs
+          artifact="dist/php-$PHP_VERSION"
+          node scripts/verify-artifact.mjs "$artifact" "$PHP_VERSION"
+          test "$(jq -er '.fingerprint' "$artifact/manifest.json")" = "$EXPECTED_FINGERPRINT"
+          test "$(jq -er '.version' "$artifact/manifest.json")" = "$(cat VERSION)"
+          expected_php=$(jq -er --arg minor "$PHP_VERSION" '.php[] | select(.minor == $minor) | .version' versions.json)
+          test "$(jq -er '.php.version' "$artifact/manifest.json")" = "$expected_php"
+      - name: Save compiled distribution before runtime validation
+        if: steps.compiled-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: dist/php-${{ matrix.php }}
+          key: ${{ steps.compiled-cache.outputs.cache-primary-key }}
       - name: Package and extract the distribution
         run: |
+          mkdir -p logs
           bash scripts/package.sh "$PHP_VERSION"
           archive="php-wasm-int64-$(cat VERSION)-php${PHP_VERSION}.tar.gz"
           (cd dist/releases && sha256sum --check "$archive.sha256")

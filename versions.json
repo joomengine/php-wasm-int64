@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/seanmorris/php-wasm.git",
+    "version": "0.2.0",
+    "commit": "1e1fb6703730759181e84c62bce35ee9129febb9"
+  },
+  "emscripten": {
+    "version": "6.0.6",
+    "image": "emscripten/emsdk:6.0.6@sha256:be96eff5810e42c632f3f8b795388a6b596e4fb21ec28b9e1fb1bc49bb3b1eef"
+  },
+  "vrzno": {
+    "repository": "https://github.com/seanmorris/vrzno.git",
+    "commit": "a35c6fec588817bb421aebda2ebe83d48af2e870"
+  },
+  "php": [
+    {
+      "minor": "8.3",
+      "version": "8.3.11",
+      "commit": "acd31dfb9927e494c408a226edd12eca2a73b0e5"
+    },
+    {
+      "minor": "8.4",
+      "version": "8.4.1",
+      "commit": "0454901ed1518cfb42bc77ac91728591b58c3e6e"
+    },
+    {
+      "minor": "8.5",
+      "version": "8.5.2",
+      "commit": "ea75635f1daa18c0244190d2413dec21a3d26bad"
+    }
+  ],
+  "abi": {
+    "target": "wasm32-unknown-emscripten",
+    "integerBits": 64,
+    "pointerBits": 32,
+    "define": "ZEND_WASM_INT64=1"
+  }
+}

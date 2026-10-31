@@ -1,0 +1,14 @@
+diff --git a/emscripten-builder.dockerfile b/emscripten-builder.dockerfile
+index 15ab083..c5d17e1 100644
+--- a/emscripten-builder.dockerfile
++++ b/emscripten-builder.dockerfile
+@@ -61,7 +61,8 @@ COPY .github/bin/verify-emscripten-profile-runtime.sh /usr/local/bin/verify-emsc
+ COPY .github/bin/verify-emscripten-fibers.sh /usr/local/bin/verify-emscripten-fibers
+ COPY .github/bin/verify-emscripten-async-errors.sh /usr/local/bin/verify-emscripten-async-errors
+ 
+-RUN retry-embuilder build USER
++# The int64 profile builds native dependencies from its own pinned sources.
++# Let emcc build required system libraries on demand; skip unrelated ports.
+ 
+ RUN bash /usr/local/bin/verify-emscripten-profile-runtime
+ RUN bash /usr/local/bin/verify-emscripten-fibers

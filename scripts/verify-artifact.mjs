@@ -69,7 +69,7 @@ export async function verifyArtifact(directory, expectedMinor) {
       requireFile(`packages/${pkg}/php${minor}-${prefix}${environment}.mjs.wasm`);
     }
   }
-  for (const extension of extensionPackages) requireFile(`packages/${extension}/${minor}.mjs`);
+  for (const extension of extensionPackages) requireFile(`packages/${extension}/${extension === 'libxml' ? 'index' : minor}.mjs`);
   assert.ok(actual.some(name => name.startsWith('include/') && name.endsWith('/zend_long.h')), 'Matching PHP/Zend headers are absent');
   assert.ok(actual.some(name => /(^|\/)LICENSE(?:\.|$)/.test(name)), 'License texts are absent');
   assert.ok(actual.some(name => /(^|\/)NOTICE(?:\.|$)/.test(name)), 'Upstream notices are absent');

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Shared build functions. Source this file from an entrypoint with set -Eeuo pipefail.
+# These globals form the interface consumed by the sourcing build entrypoints.
+# shellcheck disable=SC2034
 INT64_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 export LC_ALL=C
 
@@ -21,7 +23,7 @@ select_php() {
   # Input changes select a separate build tree. No untracked user directories are deleted.
   BUILD_FINGERPRINT=$({
     printf '%s\n' "$PHP_MINOR"
-    cd "$INT64_ROOT"
+    cd "$INT64_ROOT" || return
     find versions.json VERSION config patches scripts -type f ! -name check.sh ! -name 'verify-*' -print0 \
       | sort -z | xargs -0 sha256sum
   } | sha256sum | cut -d ' ' -f 1)

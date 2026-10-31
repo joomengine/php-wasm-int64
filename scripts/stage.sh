@@ -36,15 +36,30 @@ for package in "${packages[@]}"; do
     sed -E "s/'8\.[0-5]'/'$PHP_MINOR'/g" "$file" > "$file.int64"
     mv -- "$file.int64" "$file"
   done < <(find "$destination" -maxdepth 1 -type f \( -name '*.d.ts' -o -name '*.d.mts' \) -print0)
-  exports=$(find "$destination" -maxdepth 1 -type f -name '*.mjs' -printf '%f\n' | sort \
-    | jq -Rn '[inputs | {key:("./" + .),value:("./" + .)}, {key:("./" + sub("\\.mjs$";"")),value:("./" + .)}] | from_entries')
+  exports=$(find "$destination" -maxdepth 1 -type f -printf '%f\n' | sort | jq -Rn '
+    [inputs] as $files |
+    def js_export($file):
+      ($file | sub("\\.mjs$";"")) as $base |
+      if ($files | index($base + ".d.mts")) != null then
+        {types:("./" + $base + ".d.mts"),default:("./" + $file)}
+      elif ($files | index($base + ".d.ts")) != null then
+        {types:("./" + $base + ".d.ts"),default:("./" + $file)}
+      else "./" + $file end;
+    [
+      $files[] | select(endswith(".mjs")) as $file |
+      {key:("./" + $file),value:js_export($file)},
+      {key:("./" + ($file | sub("\\.mjs$";""))),value:js_export($file)}
+    ] | from_entries |
+    . + (if ($files | index("public.d.ts")) != null then
+      {"./public":{types:"./public.d.ts"},"./public.d.ts":{types:"./public.d.ts"}}
+    else {} end)')
   jq --arg package "$package" --arg minor "$PHP_MINOR" --arg version "$RELEASE_VERSION" --argjson exports "$exports" '
     . as $original |
     .name = ("@joomengine/php-wasm-int64-" + $package + "-php" + ($minor | gsub("\\.";""))) |
     .version = $version | .private = true | .type = "module" |
     .upstream = {name:$original.name,repository:"https://github.com/seanmorris/php-wasm",version:$original.version} |
     .repository = "https://github.com/joomengine/php-wasm-int64" |
-    .exports = ($exports + {"./package.json":"./package.json"} + (if ($exports | has("./index")) then {".":"./index.mjs"} else {} end)) |
+    .exports = ($exports + {"./package.json":"./package.json"} + (if ($exports | has("./index")) then {".":$exports["./index"]} else {} end)) |
     del(.scripts,.bin,.dependencies,.devDependencies,.workspaces,.main,.module,.types)
   ' "$source/package.json" > "$destination/package.json"
 done
@@ -71,6 +86,7 @@ cp "$INT64_ROOT/LICENSE" "$staging/LICENSE"
 [[ ! -f "$INT64_ROOT/NOTICE" ]] || cp "$INT64_ROOT/NOTICE" "$staging/NOTICE"
 cp "$INT64_ROOT/versions.json" "$INT64_ROOT/VERSION" "$staging/build-inputs/"
 cp "$BUILD_DIRECTORY/builder-packages.tsv" "$staging/build-inputs/"
+cp "$BUILD_DIRECTORY/emscripten-LICENSE" "$staging/licenses/emscripten-LICENSE"
 cp -a "$INT64_ROOT/patches" "$INT64_ROOT/config" "$INT64_ROOT/scripts" "$staging/build-inputs/"
 for file in LICENSE LICENSE-GPL NOTICE; do
   [[ ! -f "$UPSTREAM_DIRECTORY/$file" ]] || cp "$UPSTREAM_DIRECTORY/$file" "$staging/licenses/upstream-$file"

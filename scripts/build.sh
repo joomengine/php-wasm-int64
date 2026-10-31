@@ -54,6 +54,9 @@ compiler_version=$(docker compose -f "$UPSTREAM_DIRECTORY/docker-compose.yml" -f
 [[ $compiler_version == "$EMSCRIPTEN_VERSION" ]] || die "Unexpected compiler version: $compiler_version"
 image_id=$(docker image inspect --format '{{.Id}}' "$image")
 docker compose -f "$UPSTREAM_DIRECTORY/docker-compose.yml" -f "$UPSTREAM_DIRECTORY/docker-compose.int64.yml" \
+  run -T --rm emscripten-builder cat /emsdk/upstream/emscripten/LICENSE \
+  > "$BUILD_DIRECTORY/emscripten-LICENSE"
+docker compose -f "$UPSTREAM_DIRECTORY/docker-compose.yml" -f "$UPSTREAM_DIRECTORY/docker-compose.int64.yml" \
   run -T --rm emscripten-builder dpkg-query -W '-f=${Package}\t${Version}\n' \
   > "$BUILD_DIRECTORY/builder-packages.tsv"
 jq -n --arg fingerprint "$BUILD_FINGERPRINT" --arg compiler "$compiler_version" --arg image "$image_id" \

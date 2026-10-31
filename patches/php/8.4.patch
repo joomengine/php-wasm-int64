@@ -156,6 +156,188 @@ index a2c976af..5bdf9175 100644
  typedef int64_t timelib_long;
  typedef uint64_t timelib_ulong;
  # define TIMELIB_LONG_MAX INT64_MAX
+diff --git a/ext/intl/dateformat/dateformat_parse.c b/ext/intl/dateformat/dateformat_parse.c
+index 9a1c09b2..58762129 100644
+--- a/ext/intl/dateformat/dateformat_parse.c
++++ b/ext/intl/dateformat/dateformat_parse.c
+@@ -60,7 +60,7 @@ static void internal_parse_to_timestamp(IntlDateFormatter_object *dfo, char* tex
+ 	INTL_METHOD_CHECK_STATUS( dfo, "Date parsing failed" );
+ 	/* Since return is in  sec. */
+ 	result = (double)timestamp / U_MILLIS_PER_SECOND;
+-	if (result > (double)LONG_MAX || result < (double)LONG_MIN) {
++	if (!zend_finite(result) || !ZEND_DOUBLE_FITS_LONG(result)) {
+ 		ZVAL_DOUBLE(return_value, result<0?ceil(result):floor(result));
+ 	} else {
+ 		ZVAL_LONG(return_value, (zend_long)result);
+diff --git a/ext/mbstring/mbstring.c b/ext/mbstring/mbstring.c
+index 9c2ecc44..a69b6624 100644
+--- a/ext/mbstring/mbstring.c
++++ b/ext/mbstring/mbstring.c
+@@ -1866,7 +1866,7 @@ static inline bool php_mb_is_no_encoding_utf8(enum mbfl_no_encoding no_enc)
+ 	return (no_enc >= mbfl_no_encoding_utf8 && no_enc <= mbfl_no_encoding_utf8_sb);
+ }
+ 
+-static unsigned char* offset_to_pointer_utf8(unsigned char *str, unsigned char *end, ssize_t offset) {
++static unsigned char* offset_to_pointer_utf8(unsigned char *str, unsigned char *end, zend_long offset) {
+ 	if (offset < 0) {
+ 		unsigned char *pos = end;
+ 		while (offset < 0) {
+@@ -1897,7 +1897,7 @@ static size_t pointer_to_offset_utf8(unsigned char *start, unsigned char *pos) {
+ 	return mb_fast_strlen_utf8(start, pos - start);
+ }
+ 
+-static size_t mb_find_strpos(zend_string *haystack, zend_string *needle, const mbfl_encoding *enc, ssize_t offset, bool reverse)
++static size_t mb_find_strpos(zend_string *haystack, zend_string *needle, const mbfl_encoding *enc, zend_long offset, bool reverse)
+ {
+ 	size_t result;
+ 	zend_string *haystack_u8 = NULL, *needle_u8 = NULL;
+@@ -2130,16 +2130,17 @@ static zend_string* mb_get_substr(zend_string *input, size_t from, size_t len, c
+ 	unsigned int flag = enc->flag & (MBFL_ENCTYPE_SBCS | MBFL_ENCTYPE_WCS2 | MBFL_ENCTYPE_WCS4);
+ 	if (flag) {
+ 		/* The value of the flag is 2 if each codepoint takes 2 bytes, or 4 if 4 bytes */
++		if (from > in_len / flag) {
++			return zend_empty_string;
++		}
+ 		from *= flag;
+-		len *= flag;
+ 		if (from >= in_len) {
+ 			return zend_empty_string;
+ 		}
+ 		in += from;
+ 		in_len -= from;
+-		if (len > in_len) {
+-			len = in_len;
+-		}
++		/* Bound character counts before multiplying into byte offsets. */
++		len = len > in_len / flag ? in_len : len * flag;
+ 		return zend_string_init_fast((const char*)in, len);
+ 	}
+ 
+@@ -2349,7 +2350,7 @@ PHP_FUNCTION(mb_substr)
+ 	/* if "from" position is negative, count start position from the end
+ 	 * of the string */
+ 	if (from >= 0) {
+-		real_from = (size_t) from;
++		real_from = (zend_ulong) from > SIZE_MAX ? SIZE_MAX : (size_t) from;
+ 	} else if (-from < mblen) {
+ 		real_from = mblen + from;
+ 	} else {
+@@ -2361,7 +2362,7 @@ PHP_FUNCTION(mb_substr)
+ 	if (len_is_null) {
+ 		real_len = MBFL_SUBSTR_UNTIL_END;
+ 	} else if (len >= 0) {
+-		real_len = (size_t) len;
++		real_len = (zend_ulong) len > SIZE_MAX ? SIZE_MAX : (size_t) len;
+ 	} else if (real_from < mblen && -len < mblen - real_from) {
+ 		real_len = (mblen - real_from) + len;
+ 	} else {
+@@ -2410,6 +2411,10 @@ PHP_FUNCTION(mb_strcut)
+ 		}
+ 	}
+ 
++	if ((zend_ulong) from > string.len) {
++		RETURN_EMPTY_STRING();
++	}
++
+ 	/* if "length" position is negative, set it to the length
+ 	 * needed to stop that many chars from the end of the string */
+ 	if (len < 0) {
+@@ -2419,7 +2424,11 @@ PHP_FUNCTION(mb_strcut)
+ 		}
+ 	}
+ 
+-	if (from > string.len || len == 0) {
++	/* Clamp before the encoding-specific size_t length conversion. */
++	if ((zend_ulong) len > string.len) {
++		len = string.len;
++	}
++	if (len == 0) {
+ 		RETURN_EMPTY_STRING();
+ 	}
+ 
+@@ -2692,7 +2701,8 @@ PHP_FUNCTION(mb_strimwidth)
+ 		}
+ 	}
+ 
+-	RETVAL_STR(mb_trim_string(str, trimmarker, enc, from, width));
++	size_t real_width = (zend_ulong) width > SIZE_MAX ? SIZE_MAX : (size_t) width;
++	RETVAL_STR(mb_trim_string(str, trimmarker, enc, from, real_width));
+ }
+ 
+ 
+@@ -5830,10 +5840,15 @@ PHP_FUNCTION(mb_str_pad)
+ 
+ 	/* If resulting string turns out to be shorter than input string,
+ 	   we simply copy the input and return. */
+-	if (pad_to_length < 0 || (size_t)pad_to_length <= input_length) {
++	if (pad_to_length < 0 || (zend_ulong)pad_to_length <= input_length) {
+ 		RETURN_STR_COPY(input);
+ 	}
+ 
++	if (UNEXPECTED((zend_ulong) pad_to_length > ZSTR_MAX_LEN)) {
++		zend_throw_error(NULL, "String size overflow");
++		RETURN_THROWS();
++	}
++
+ 	if (ZSTR_LEN(pad) == 0) {
+ 		zend_argument_must_not_be_empty_error(3);
+ 		RETURN_THROWS();
+diff --git a/ext/mbstring/php_mbregex.c b/ext/mbstring/php_mbregex.c
+index e1a5a10c..668ebc1b 100644
+--- a/ext/mbstring/php_mbregex.c
++++ b/ext/mbstring/php_mbregex.c
+@@ -1576,7 +1576,7 @@ PHP_FUNCTION(mb_ereg_search_setpos)
+ 		position += Z_STRLEN(MBREX(search_str));
+ 	}
+ 
+-	if (position < 0 || (!Z_ISUNDEF(MBREX(search_str)) && Z_TYPE(MBREX(search_str)) == IS_STRING && (size_t)position > Z_STRLEN(MBREX(search_str)))) {
++	if (position < 0 || (zend_ulong) position > SIZE_MAX || (!Z_ISUNDEF(MBREX(search_str)) && Z_TYPE(MBREX(search_str)) == IS_STRING && (zend_ulong)position > Z_STRLEN(MBREX(search_str)))) {
+ 		zend_argument_value_error(1, "is out of range");
+ 		RETURN_THROWS();
+ 	}
+diff --git a/ext/openssl/openssl.c b/ext/openssl/openssl.c
+index be68216b..30a00718 100644
+--- a/ext/openssl/openssl.c
++++ b/ext/openssl/openssl.c
+@@ -5508,6 +5508,10 @@ PHP_FUNCTION(openssl_pkey_derive)
+ 		zend_argument_value_error(3, "must be greater than or equal to 0");
+ 		RETURN_THROWS();
+ 	}
++	if (UNEXPECTED((zend_ulong) key_len > ZSTR_MAX_LEN)) {
++		zend_argument_value_error(3, "must be less than or equal to " ZEND_LONG_FMT, (zend_long) ZSTR_MAX_LEN);
++		RETURN_THROWS();
++	}
+ 
+ 	EVP_PKEY *pkey = php_openssl_pkey_from_zval(priv_key, 0, "", 0, 2);
+ 	if (!pkey) {
+diff --git a/ext/pdo_sqlite/sqlite_driver.c b/ext/pdo_sqlite/sqlite_driver.c
+index 3c2b4efd..32998391 100644
+--- a/ext/pdo_sqlite/sqlite_driver.c
++++ b/ext/pdo_sqlite/sqlite_driver.c
+@@ -355,7 +355,11 @@ static int do_callback(zend_fcall_info_cache *fcc, int argc, sqlite3_value **arg
+ 		/* get the value */
+ 		switch (sqlite3_value_type(argv[i])) {
+ 			case SQLITE_INTEGER:
++#if ZEND_LONG_MAX > 2147483647
++				ZVAL_LONG(&zargs[i + is_agg], sqlite3_value_int64(argv[i]));
++#else
+ 				ZVAL_LONG(&zargs[i + is_agg], sqlite3_value_int(argv[i]));
++#endif
+ 				break;
+ 
+ 			case SQLITE_FLOAT:
+@@ -393,7 +397,11 @@ static int do_callback(zend_fcall_info_cache *fcc, int argc, sqlite3_value **arg
+ 		if (!Z_ISUNDEF(retval)) {
+ 			switch (Z_TYPE(retval)) {
+ 				case IS_LONG:
++#if ZEND_LONG_MAX > 2147483647
++					sqlite3_result_int64(context, Z_LVAL(retval));
++#else
+ 					sqlite3_result_int(context, Z_LVAL(retval));
++#endif
+ 					break;
+ 
+ 				case IS_NULL:
 diff --git a/ext/random/random.c b/ext/random/random.c
 index 46a6c4fd..761a6928 100644
 --- a/ext/random/random.c
@@ -500,3 +682,39 @@ index 9f7e0ff6..c6f8ee86 100644
  
  	if (!cs) {
  		RETURN_LONG(zend_binary_strncmp(ZSTR_VAL(s1) + offset, (ZSTR_LEN(s1) - offset), ZSTR_VAL(s2), ZSTR_LEN(s2), cmp_len));
+diff --git a/ext/zip/php_zip.c b/ext/zip/php_zip.c
+index 9fc0af4f..bd266aef 100644
+--- a/ext/zip/php_zip.c
++++ b/ext/zip/php_zip.c
+@@ -1346,6 +1346,10 @@ PHP_FUNCTION(zip_entry_read)
+ 	if (len <= 0) {
+ 		len = 1024;
+ 	}
++	if (UNEXPECTED((zend_ulong) len > ZSTR_MAX_LEN)) {
++		zend_argument_value_error(2, "must be less than or equal to " ZEND_LONG_FMT, (zend_long) ZSTR_MAX_LEN);
++		RETURN_THROWS();
++	}
+ 
+ 	if (zr_rsrc->zf) {
+ 		buffer = zend_string_safe_alloc(1, len, 0, 0);
+@@ -2909,11 +2913,20 @@ static void php_zip_get_from(INTERNAL_FUNCTION_PARAMETERS, int type) /* {{{ */
+ 		PHP_ZIP_STAT_INDEX(intern, index, 0, sb);
+ 	}
+ 
++	if (UNEXPECTED(len > 0 && (zend_ulong) len > ZSTR_MAX_LEN)) {
++		zend_argument_value_error(2, "must be less than or equal to " ZEND_LONG_FMT, (zend_long) ZSTR_MAX_LEN);
++		RETURN_THROWS();
++	}
++
+ 	if (sb.size < 1) {
+ 		RETURN_EMPTY_STRING();
+ 	}
+ 
+ 	if (len < 1) {
++		if (UNEXPECTED(sb.size > ZSTR_MAX_LEN)) {
++			zend_throw_error(NULL, "String size overflow");
++			RETURN_THROWS();
++		}
+ 		len = sb.size;
+ 	}
+ 	if (index >= 0) {

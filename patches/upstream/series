@@ -1,1 +1,2 @@
 0001-consistent-php-integer-abi.patch
+0002-bigint-runtime-declarations.patch

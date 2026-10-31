@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: int64-release-${{ github.ref }}
   cancel-in-progress: false

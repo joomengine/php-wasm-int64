@@ -124,10 +124,10 @@ index 0369686..8714776 100644
  const origZval = Symbol('origZval');
 diff --git a/js/vrzno_json.js b/js/vrzno_json.js
 new file mode 100644
-index 0000000..bc4960e
+index 0000000..ee79f92
 --- /dev/null
 +++ b/js/vrzno_json.js
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,80 @@
 +/**
 + * Reads PHP-generated JSON without first rounding integer tokens through Number.
 + * PHP emits integral floats with a fractional suffix for this transport, so only
@@ -146,9 +146,11 @@ index 0000000..bc4960e
 +		const start = offset++;
 +		while(offset < source.length)
 +		{
-+			const character = source[offset++];
-+			if(character === '"') return JSON.parse(source.slice(start, offset));
-+			if(character === '\\') offset++;
++			// Emscripten's metadata extractor unescapes doubled backslashes after
++			// EM_JS stringification. Character codes survive both compiler stages.
++			const character = source.charCodeAt(offset++);
++			if(character === 34) return JSON.parse(source.slice(start, offset));
++			if(character === 92) offset++;
 +		}
 +		return fail();
 +	};
@@ -256,7 +258,7 @@ index c7b46a3..ca5d0c9 100644
  					break;
  
 diff --git a/js/vrzno_properties_json.js b/js/vrzno_properties_json.js
-index fdff3dd..d486d7a 100644
+index fdff3dd..636f079 100644
 --- a/js/vrzno_properties_json.js
 +++ b/js/vrzno_properties_json.js
 @@ -1,6 +1,7 @@
@@ -360,7 +362,7 @@ index fdff3dd..d486d7a 100644
 +			}
 +		}
 +		fragments.push(serialized.slice(copied));
-+		json = fragments.join('');
++		json = fragments.join("");
 +		if(position !== strings.length)
 +		{
 +			throw new TypeError('Incomplete JSON string ordering during PHP property inspection');

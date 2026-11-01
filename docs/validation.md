@@ -26,6 +26,12 @@ ready on the strength of checks from an earlier commit.
 Native-host PHP execution, mocked WebAssembly, source-text checks, or a test
 that silently skips missing runtime files cannot replace these checks.
 
+Before compiling PHP, the pinned Emscripten builder generates all Vrzno headers
+using the upstream Make fragment, compiles their embedded functions, and links
+them into an executable WebAssembly module. The resulting JavaScript must parse
+and preserve escaped JSON and signed 64-bit values. This catches compiler
+metadata transformations that host C stringification alone cannot detect.
+
 ## Release boundary
 
 Release workflows must run the runtime validation for the tagged source and

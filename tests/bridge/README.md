@@ -9,12 +9,22 @@ the signed int64 boundaries, plus typed callbacks, promise results, array keys,
 property operations, object casts, overflow exceptions, legacy helper arguments,
 and browser timer bounds. It must run against each compiled PHP version.
 
-`source-contract.mjs` additionally compiles the patched JavaScript bodies through
+`embedded-contract.mjs` runs Vrzno's actual Makefile generator, compiles all five
+generated headers, and links all 44 JS functions with the pinned Emscripten 6.0.6
+compiler, Asyncify, and 4 GiB memory settings. It then executes JSON transport and
+object snapshot checks in the generated Wasm module. This covers the metadata
+extractor's legacy backslash unescaping and the JS optimizer, which the host C
+compiler cannot reproduce. The build runs this small preflight before compiling
+PHP. To run it inside the pinned SDK, set `VRZNO_SOURCE_ROOT` to the patched Vrzno
+directory and run `node --test tests/bridge/embedded-contract.mjs`.
+
+`source-contract.mjs` also compiles the patched JavaScript bodies through
 C macro stringification, then tests the emitted JavaScript using Node's standard
 test runner and a real small Wasm i64 function. A host C compiler (`cc`, or the
 executable named by `BRIDGE_CC`) is required. This catches C token and escape
-hazards in `EM_JS` as well as bridge behavior; it does not replace the PHP runtime
-tests. Point `VRZNO_SOURCE_ROOT` at the patched Vrzno directory and run
+hazards in `EM_JS` as well as bridge behavior; it does not cover Emscripten's
+metadata extraction or replace the compiled preflight and PHP runtime tests.
+Point `VRZNO_SOURCE_ROOT` at the patched Vrzno directory and run
 `node --test tests/bridge/source-contract.mjs`.
 
 The intentional conversion contract is:

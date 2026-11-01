@@ -25,6 +25,15 @@ SOURCE_DATE_EPOCH=$(git -C "$UPSTREAM_DIRECTORY" show -s --format=%ct HEAD)
 docker build --tag "$image" \
   --build-arg "EMSDK_VERSION=${base_image#emscripten/emsdk:}" \
   --file "$UPSTREAM_DIRECTORY/emscripten-builder.dockerfile" "$UPSTREAM_DIRECTORY"
+
+# Exercise Vrzno's generated headers through the actual patched compiler before
+# spending time compiling PHP. C stringification alone misses EM_JS escaping.
+log "Checking the embedded bridge with Emscripten $EMSCRIPTEN_VERSION"
+docker run --rm --env EMCC_CORES --env SOURCE_DATE_EPOCH \
+  --env VRZNO_SOURCE_ROOT=/vrzno \
+  --volume "$INT64_ROOT:/int64:ro" --volume "$VRZNO_DIRECTORY:/vrzno:ro" \
+  --workdir /int64 "$image" node --test tests/bridge/embedded-contract.mjs
+
 cat > "$UPSTREAM_DIRECTORY/docker-compose.int64.yml" <<EOF
 services:
   emscripten-builder:

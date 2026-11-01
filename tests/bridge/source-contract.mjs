@@ -15,9 +15,9 @@ after(() => rmSync(compiledDirectory, { recursive: true, force: true }));
 function source(name) {
   if (embeddedSources.has(name)) return embeddedSources.get(name);
   const body = readFileSync(resolve(sourceRoot, 'js', name), 'utf8');
-  // Match the C preprocessor stringification used by Emscripten's EM_JS.
-  // Compile and emit the resulting C string: preprocessing alone also misses
-  // escape sequences that C consumes before Emscripten receives the JS bytes.
+  // This fast check covers C tokenization and stringification only. The separate
+  // embedded-contract.mjs uses real emcc: its metadata extractor also unescapes
+  // doubled backslashes, which a host C compiler does not reproduce.
   const executable = resolve(compiledDirectory, name);
   const result = spawnSync(process.env.BRIDGE_CC || 'cc', ['-Werror', '-x', 'c', '-', '-o', executable], {
     input: '#include <stdio.h>\n#define EM_JS(result, name, arguments, ...) #__VA_ARGS__\n'

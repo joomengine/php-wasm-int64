@@ -1,40 +1,60 @@
 name: Release verified PHP int64
 
 on:
-  workflow_run:
-    workflows: ['Validate PHP int64']
-    types: [completed]
-    branches: [main]
+  push:
+    tags: ['v*.*.*']
 
 permissions:
   contents: read
-  actions: read
 
 defaults:
   run:
     shell: bash
 
 concurrency:
-  group: int64-release-${{ github.repository }}
+  group: int64-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  identity:
+    name: Verify release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the version tag on the default branch
+        id: tag
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
+          printf 'commit=%s\n' "$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: identity
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
   release:
     name: Publish verified archives
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.head_branch == github.event.repository.default_branch
+    needs: [identity, validate]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
-      actions: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.identity.outputs.commit }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -42,16 +62,13 @@ jobs:
           node-version: '24.5.0'
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
           pattern: int64-php-*
           path: ${{ runner.temp }}/php-int64-release-artifacts
           merge-multiple: true
       - name: Publish the validated version
         env:
           GH_TOKEN: ${{ github.token }}
-          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
-          VALIDATION_RUN_ID: ${{ github.event.workflow_run.id }}
+          VALIDATED_SHA: ${{ needs.identity.outputs.commit }}
+          VALIDATION_RUN_ID: ${{ github.run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: bash scripts/release.sh "$RUNNER_TEMP/php-int64-release-artifacts"
+        run: bash .github/scripts/release.sh "$RUNNER_TEMP/php-int64-release-artifacts"

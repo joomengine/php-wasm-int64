@@ -102,10 +102,18 @@ to PHP. Application JSON transport must handle BigInt explicitly; ordinary
 
 ## Releases and maintenance
 
-Merging into `main` runs the build and test matrix, then automatically publishes
-`vVERSION` using that successful run’s archives and checksums. The first release
-is `v0.0.1`. No manual tag or npm token is required. Published versions are never
-overwritten; increment `VERSION` and the package version for a new release.
+`VERSION` is the single release-version setting. Set the desired patch, minor,
+or major version and merge it into `main`. After its checks pass, tag that commit:
+
+```bash
+git tag "v$(cat VERSION)"
+git push origin "v$(cat VERSION)"
+```
+
+The tag must match `VERSION`. Its workflow builds and tests all three PHP
+versions, then publishes their archives and checksums. Versions never increment
+automatically, and published releases are never overwritten. No npm token is
+required.
 
 Updating an upstream revision requires reviewing patch applicability and
 passing the complete matrix again. Source and toolchain pins make builds

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Publish only the verified artifacts from the exact successful default-branch run.
+# Publish only the verified artifacts from this version tag's successful run.
 set -Eeuo pipefail
-source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname -- "${BASH_SOURCE[0]}")/../../scripts/common.sh"
 for command in git jq node gh tar sha256sum cmp; do need "$command"; done
 [[ $# == 1 && -d $1 ]] || die 'Usage: release.sh <verified-artifact-directory>'
 artifacts=$(cd -- "$1" && pwd -P)
@@ -15,9 +15,9 @@ git -C "$INT64_ROOT" merge-base --is-ancestor "$VALIDATED_SHA" "refs/remotes/ori
 select_php 8.3
 version=$RELEASE_VERSION
 tag="v$version"
-[[ $(jq -er '.version' "$INT64_ROOT/package.json") == "$version" ]] || die 'package.json version differs from VERSION.'
-[[ $(jq -er '.version' "$INT64_ROOT/package-lock.json") == "$version" ]] || die 'package-lock.json version differs from VERSION.'
-[[ $(jq -er '.packages[""].version' "$INT64_ROOT/package-lock.json") == "$version" ]] || die 'The package lock root version differs from VERSION.'
+[[ ${GITHUB_REF_TYPE:-} == tag && ${GITHUB_REF_NAME:-} == "$tag" ]] || die 'The pushed tag must equal vVERSION.'
+[[ $(git -C "$INT64_ROOT" rev-parse "refs/tags/$tag^{commit}") == "$VALIDATED_SHA" ]] \
+  || die 'The version tag does not identify the validated commit.'
 work=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/php-int64-release.XXXXXX")
 trap 'rm -r -- "$work"' EXIT
 assets=()
@@ -65,17 +65,18 @@ tag_commit() {
     depth=$((depth + 1))
   done
 }
+existing_commit=$(tag_commit)
+[[ $existing_commit == "$VALIDATED_SHA" ]] || die "$tag is missing or points to a different commit."
 release=$(read_release)
+if [[ $release != null ]]; then
+  [[ $(jq -er '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
+    || die 'The existing release belongs to a different validated commit.'
+fi
 if [[ $release != null && $(jq -r '.draft' <<< "$release") == false ]]; then
   log "Release $tag is already published; its assets remain unchanged."
   exit 0
 fi
-existing_commit=$(tag_commit)
-[[ -z $existing_commit || $existing_commit == "$VALIDATED_SHA" ]] || die "$tag already points to a different commit."
-if [[ $release != null ]]; then
-  [[ $(jq -er '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
-    || die 'The existing draft belongs to a different validated commit.'
-else
+if [[ $release == null ]]; then
   printf '%s\n' \
     'PHP 8.3, 8.4 and 8.5 with native 64-bit PHP integers and wasm32 memory addressing.' \
     '' \
@@ -84,7 +85,7 @@ else
     '' \
     'All three archives passed the Node and Chromium, Firefox and WebKit validation suites.' \
     'Use the runtime and matching extensions from the same archive.' > "$work/notes.txt"
-  gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$VALIDATED_SHA" --draft \
+  gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$VALIDATED_SHA" --draft \
     --title "PHP-WASM int64 $tag" --notes-file "$work/notes.txt"
 fi
 
@@ -99,7 +100,7 @@ release=$(read_release)
 jq -r '.assets[].name' <<< "$release" | sort > "$work/actual-assets"
 cmp --silent "$work/expected-assets" "$work/actual-assets" || die 'The draft does not contain exactly the six expected assets.'
 existing_commit=$(tag_commit)
-[[ -z $existing_commit || $existing_commit == "$VALIDATED_SHA" ]] || die 'The release tag changed before publication.'
+[[ $existing_commit == "$VALIDATED_SHA" ]] || die 'The release tag changed before publication.'
 gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 release=$(read_release)
 [[ $(jq -r '.draft' <<< "$release") == false ]] || die 'Release publication did not complete.'

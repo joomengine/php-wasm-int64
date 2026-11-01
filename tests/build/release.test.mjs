@@ -60,7 +60,8 @@ before(() => {
   artifacts = join(root, 'artifacts');
   fakeBin = join(root, 'bin');
   for (const directory of [checkout, artifacts, fakeBin]) mkdirSync(directory);
-  for (const filename of ['scripts', 'config', 'patches', 'versions.json', 'VERSION', 'LICENSE', 'NOTICE', 'package.json', 'package-lock.json']) {
+  mkdirSync(join(checkout, '.github'));
+  for (const filename of ['.github/scripts', 'scripts', 'config', 'patches', 'versions.json', 'VERSION', 'LICENSE', 'NOTICE']) {
     cpSync(join(source, filename), join(checkout, filename), { recursive: true });
   }
   const git = args => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
@@ -70,6 +71,7 @@ before(() => {
   sha = git(['rev-parse', 'HEAD']);
   git(['update-ref', 'refs/remotes/origin/main', sha]);
   version = readFileSync(join(checkout, 'VERSION'), 'utf8').trim();
+  git(['tag', `v${version}`, sha]);
   const pins = JSON.parse(readFileSync(join(checkout, 'versions.json'), 'utf8'));
   for (const minor of minors) {
     const fingerprint = execFileSync('bash', ['-c', 'source "$1/scripts/common.sh"; select_php "$2"; printf "%s" "$BUILD_FINGERPRINT"', 'fingerprint', checkout, minor], { encoding: 'utf8', env: { ...process.env, BASH_ENV: '' } });
@@ -98,7 +100,7 @@ if (args[0] === 'api') {
     output({ object: { type: 'commit', sha: state.annotatedTarget } });
   } else fail();
 } else if (args[0] === 'release' && args[1] === 'create') {
-  if (state.release) fail();
+  if (state.release || !state.tag || !args.includes('--verify-tag')) fail();
   state.release = { tag_name: args[2], draft: true, target_commitish: value('--target'), assets: [] };
   state.notes = fs.readFileSync(value('--notes-file'), 'utf8');
   save();
@@ -112,7 +114,6 @@ if (args[0] === 'api') {
 } else if (args[0] === 'release' && args[1] === 'edit') {
   if (!state.release?.draft || !args.includes('--draft=false')) fail();
   state.release.draft = false;
-  state.tag = state.release.target_commitish;
   save();
 } else fail();
 `, { mode: 0o755 });
@@ -124,18 +125,19 @@ function scenario(initial = {}) {
   const directory = mkdtempSync(join(root, 'scenario-'));
   const statePath = join(directory, 'state.json');
   const callsPath = join(directory, 'calls.jsonl');
-  writeFileSync(statePath, JSON.stringify(initial));
+  writeFileSync(statePath, JSON.stringify({ tag: sha, ...initial }));
   writeFileSync(callsPath, '');
   return {
     directory,
     state: () => JSON.parse(readFileSync(statePath, 'utf8')),
     update: state => writeFileSync(statePath, JSON.stringify(state)),
     calls: () => readFileSync(callsPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)),
-    run: (directory = artifacts, overrides = {}) => spawnSync('bash', [join(checkout, 'scripts/release.sh'), directory], {
+    run: (directory = artifacts, overrides = {}) => spawnSync('bash', [join(checkout, '.github/scripts/release.sh'), directory], {
       cwd: checkout, encoding: 'utf8', timeout: 30000,
       env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, BASH_ENV: '', RUNNER_TEMP: root,
         GH_STATE_PATH: statePath, GH_CALLS_PATH: callsPath, GH_TOKEN: 'fixture-token',
         GITHUB_REPOSITORY: 'joomengine/php-wasm-int64', VALIDATED_SHA: sha,
+        GITHUB_REF_TYPE: 'tag', GITHUB_REF_NAME: `v${version}`,
         VALIDATION_RUN_ID: '12345', DEFAULT_BRANCH: 'main', ...overrides },
     }),
   };
@@ -145,20 +147,43 @@ function rejected(result, message) { assert.notEqual(result.status, 0); assert.m
 function mutations(item) { return item.calls().filter(call => call[0] === 'release'); }
 const draft = target => ({ tag_name: `v${version}`, draft: true, target_commitish: target, assets: [] });
 
-test('successful main validation is the only release trigger, using its exact source and artifacts', () => {
+test('only explicit version tags release, after identity checks and same-run reusable validation', () => {
   const workflow = readFileSync(join(source, '.github/workflows/release.yml'), 'utf8');
-  assert.match(workflow, /workflow_run:\s+workflows: \['Validate PHP int64'\]\s+types: \[completed\]\s+branches: \[main\]/);
-  for (const guard of [
-    "github.event.workflow_run.conclusion == 'success'",
-    "github.event.workflow_run.event == 'push'",
-    'github.event.workflow_run.head_repository.full_name == github.repository',
-    'github.event.workflow_run.head_branch == github.event.repository.default_branch',
-  ]) assert.ok(workflow.includes(guard), `Missing publication guard: ${guard}`);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
-  assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/);
-  assert.match(workflow, /VALIDATED_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /on:\s+push:\s+tags: \['v\*\.\*\.\*'\]/);
+  assert.match(workflow, /validate:\s+needs: identity\s+uses: \.\/\.github\/workflows\/validate\.yml/);
+  assert.match(workflow, /release:\s+name: Publish verified archives\s+needs: \[identity, validate\]/);
+  assert.ok(workflow.includes('test "$GITHUB_REF_NAME" = "v$(cat VERSION)"'));
+  assert.ok(workflow.includes('git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"'));
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /commit: \$\{\{ steps\.tag\.outputs\.commit \}\}/);
+  assert.match(workflow, /ref: \$\{\{ needs\.identity\.outputs\.commit \}\}/);
+  assert.match(workflow, /VALIDATED_SHA: \$\{\{ needs\.identity\.outputs\.commit \}\}/);
+  assert.match(workflow, /VALIDATION_RUN_ID: \$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /pattern: int64-php-\*/);
-  assert.doesNotMatch(workflow, /workflow_dispatch:|workflow_call:|push:|uses: \.\/\.github\/workflows\/validate/);
+  assert.doesNotMatch(workflow, /workflow_dispatch:|workflow_run:|branches:|run-id:/);
+});
+
+test('the workflow identity job rejects a wrong version tag or branch before validation', () => {
+  const lines = readFileSync(join(source, '.github/workflows/release.yml'), 'utf8').split('\n');
+  const start = lines.findIndex(line => line.trim() === 'run: |') + 1;
+  const commands = [];
+  for (const line of lines.slice(start)) {
+    if (!line.startsWith('          ')) break;
+    commands.push(line.slice(10));
+  }
+  assert.ok(commands.length >= 3);
+  const output = join(root, 'identity-output');
+  const run = overrides => spawnSync('bash', ['-euo', 'pipefail', '-c', commands.join('\n')], {
+    cwd: checkout, encoding: 'utf8', env: { ...process.env, BASH_ENV: '',
+      GITHUB_REF_NAME: `v${version}`, DEFAULT_BRANCH: 'main', GITHUB_OUTPUT: output, ...overrides },
+  });
+  succeeded(run({}));
+  assert.equal(readFileSync(output, 'utf8'), `commit=${sha}\n`);
+  assert.notEqual(run({ GITHUB_REF_NAME: 'v999.0.0' }).status, 0);
+  const unrelated = execFileSync('git', ['-C', checkout, '-c', 'user.name=Release contract', '-c', 'user.email=release@example.invalid',
+    '-c', 'commit.gpgsign=false', 'commit-tree', 'HEAD^{tree}', '-m', 'Unrelated branch'], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', checkout, 'update-ref', 'refs/remotes/origin/unrelated', unrelated]);
+  assert.notEqual(run({ DEFAULT_BRANCH: 'unrelated' }).status, 0);
 });
 
 test('new version publishes exactly six verified assets after uploading a commit-bound draft', () => {
@@ -173,10 +198,18 @@ test('new version publishes exactly six verified assets after uploading a commit
   assert.ok(item.state().notes.includes(sha));
 });
 
-test('published version remains untouched on a later main push with unchanged VERSION', () => {
-  const release = { ...draft('a'.repeat(40)), draft: false, assets: [{ name: 'existing-asset' }] };
-  const item = scenario({ release, tag: 'a'.repeat(40) });
+test('published version remains untouched when its tag validation is rerun', () => {
+  const release = { ...draft(sha), draft: false, assets: [{ name: 'existing-asset' }] };
+  const item = scenario({ release });
   succeeded(item.run());
+  assert.deepEqual(item.state().release, release);
+  assert.deepEqual(mutations(item), []);
+});
+
+test('force-moving a published version tag does not silently accept the old release', () => {
+  const release = { ...draft('a'.repeat(40)), draft: false, assets: [{ name: 'existing-asset' }] };
+  const item = scenario({ release });
+  rejected(item.run(), /existing release belongs to a different validated commit/);
   assert.deepEqual(item.state().release, release);
   assert.deepEqual(mutations(item), []);
 });
@@ -194,6 +227,25 @@ test('an existing tag or draft bound to another commit cannot publish', () => {
     rejected(item.run(), /different (?:validated )?commit/);
     assert.deepEqual(mutations(item), []);
   }
+});
+
+test('annotated version tags resolve to their exact validated commit', () => {
+  execFileSync('git', ['-C', checkout, '-c', 'user.name=Release contract', '-c', 'user.email=release@example.invalid',
+    '-c', 'tag.gpgsign=false', 'tag', '--force', '--annotate', `v${version}`, '-m', 'Annotated fixture', sha]);
+  try {
+    const item = scenario({ tag: 'd'.repeat(40), annotated: true, annotatedTarget: sha });
+    succeeded(item.run());
+    assert.equal(item.state().release.target_commitish, sha);
+    assert.equal(item.state().release.draft, false);
+  } finally {
+    execFileSync('git', ['-C', checkout, '-c', 'tag.gpgsign=false', 'tag', '--force', `v${version}`, sha]);
+  }
+});
+
+test('a deleted remote version tag cannot be recreated implicitly by publishing', () => {
+  const item = scenario({ tag: null });
+  rejected(item.run(), /missing or points to a different commit/);
+  assert.deepEqual(mutations(item), []);
 });
 
 test('release, tag and annotated-tag API failures never become absent-release permission', () => {
@@ -244,4 +296,16 @@ test('checkout must be the exact validated commit before accepting any release a
   const item = scenario();
   rejected(item.run(artifacts, { VALIDATED_SHA: 'f'.repeat(40) }), /Checkout differs/);
   assert.deepEqual(item.calls(), []);
+});
+
+test('only the matching version tag on the default branch may publish', () => {
+  for (const [overrides, error] of [
+    [{ GITHUB_REF_TYPE: 'branch' }, /pushed tag must equal/],
+    [{ GITHUB_REF_NAME: 'v999.0.0' }, /pushed tag must equal/],
+    [{ DEFAULT_BRANCH: 'missing-branch' }, /no longer on the default branch/],
+  ]) {
+    const item = scenario();
+    rejected(item.run(artifacts, overrides), error);
+    assert.deepEqual(item.calls(), []);
+  }
 });

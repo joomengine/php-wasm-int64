@@ -9,17 +9,18 @@ This repository retrieves pinned revisions of
 Vrzno, applies reviewed patches, and compiles a separate distribution. It has no
 WordPress runtime dependency.
 
-| PHP minor | Pinned PHP source | Integer model |
-| --- | --- | --- |
-| 8.3 | 8.3.36 | Signed 64-bit PHP integers; wasm32 pointers |
-| 8.4 | 8.4.27 | Signed 64-bit PHP integers; wasm32 pointers |
-| 8.5 | 8.5.12 | Signed 64-bit PHP integers; wasm32 pointers |
+| PHP minor | Integer model |
+| --- | --- |
+| 8.3 | Signed 64-bit PHP integers; wasm32 pointers |
+| 8.4 | Signed 64-bit PHP integers; wasm32 pointers |
+| 8.5 | Signed 64-bit PHP integers; wasm32 pointers |
 
-These are PHP's current security releases as checked on 2026-10-31 against
-[the official release feed](https://www.php.net/releases/active.php). Sean's
-runtime patches are rebased onto these releases, preserving their newer fixes.
-Release updates remain explicit reviewed changes. The exact source commits,
-Emscripten version, and builder image digest are in [versions.json](versions.json).
+The daily update workflow checks [the official release feed](https://www.php.net/releases/active.php)
+for stable patches in these PHP lines. Compatible source updates are proposed in
+one draft pull request and receive the complete build and runtime validation.
+Updates remain reviewed changes; publication still requires a version tag.
+The exact PHP releases and source commits, Emscripten version, and builder image
+digest are in [versions.json](versions.json).
 Native-library revisions and archive checksums are in
 [config/dependencies.json](config/dependencies.json).
 

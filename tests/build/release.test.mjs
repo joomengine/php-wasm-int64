@@ -1,0 +1,247 @@
+import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
+import { createHash } from 'node:crypto';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
+
+const source = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const minors = ['8.3', '8.4', '8.5'];
+let root, checkout, artifacts, sha, version, fakeBin;
+
+// These tiny valid Wasm modules test archive verification and publication only.
+// The production workflow downloads archives that already passed real runtime tests.
+function writeArchive(minor, pins, fingerprint, destination, changeManifest = value => value) {
+  const directory = join(root, `fixture-${minor}`, `php-${minor}`);
+  rmSync(dirname(directory), { recursive: true, force: true });
+  const files = {};
+  function add(name, contents = '// Release contract fixture.\n') {
+    const bytes = Buffer.isBuffer(contents) ? contents : Buffer.from(contents);
+    mkdirSync(dirname(join(directory, name)), { recursive: true });
+    writeFileSync(join(directory, name), bytes);
+    files[name] = { size: bytes.length, sha256: digest(bytes) };
+  }
+  for (const [pkg, prefix, environments, wrappers] of [
+    ['php-wasm', '', ['web', 'worker', 'webview', 'node'], ['PhpWeb', 'PhpWorker', 'PhpWebview', 'PhpNode']],
+    ['php-cgi-wasm', 'cgi-', ['web', 'worker', 'webview', 'node'], ['PhpCgiWeb', 'PhpCgiWorker', 'PhpCgiWebview', 'PhpCgiNode']],
+    ['php-cli-wasm', 'cli-', ['web', 'node'], ['PhpCliWeb', 'PhpCliNode']],
+    ['php-dbg-wasm', 'dbg-', ['web', 'node'], ['PhpDbgWeb', 'PhpDbgNode']],
+  ]) {
+    for (const wrapper of wrappers) add(`packages/${pkg}/${wrapper}.mjs`);
+    for (const environment of environments) {
+      add(`packages/${pkg}/php${minor}-${prefix}${environment}.mjs`);
+      add(`packages/${pkg}/php${minor}-${prefix}${environment}.mjs.wasm`, Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+    }
+  }
+  for (const extension of ['libxml', 'dom', 'zlib', 'libzip', 'gd', 'iconv', 'intl', 'openssl', 'mbstring', 'phar', 'sqlite', 'xml', 'simplexml', 'xmlreader', 'xmlwriter']) {
+    add(`packages/${extension}/${extension === 'libxml' ? 'index' : minor}.mjs`);
+  }
+  add('include/Zend/zend_long.h');
+  add('LICENSE', readFileSync(join(checkout, 'LICENSE')));
+  add('NOTICE', readFileSync(join(checkout, 'NOTICE')));
+  const manifest = {
+    schemaVersion: 1, version, fingerprint, build: { fingerprint },
+    php: pins.php.find(php => php.minor === minor), abi: pins.abi,
+    upstream: pins.upstream, vrzno: pins.vrzno, emscripten: pins.emscripten,
+    patches: ['php', 'runtime', 'bridge'].map(path => ({ path, sha256: digest(path) })), files,
+  };
+  writeFileSync(join(directory, 'manifest.json'), JSON.stringify(changeManifest(manifest)));
+  const filename = `php-wasm-int64-${version}-php${minor}.tar.gz`;
+  execFileSync('tar', ['-czf', join(destination, filename), '-C', dirname(directory), `php-${minor}`]);
+  writeFileSync(join(destination, `${filename}.sha256`), `${digest(readFileSync(join(destination, filename)))}  ${filename}\n`);
+}
+
+before(() => {
+  root = mkdtempSync(join(tmpdir(), 'php-int64-release-contract-'));
+  checkout = join(root, 'checkout');
+  artifacts = join(root, 'artifacts');
+  fakeBin = join(root, 'bin');
+  for (const directory of [checkout, artifacts, fakeBin]) mkdirSync(directory);
+  for (const filename of ['scripts', 'config', 'patches', 'versions.json', 'VERSION', 'LICENSE', 'NOTICE', 'package.json', 'package-lock.json']) {
+    cpSync(join(source, filename), join(checkout, filename), { recursive: true });
+  }
+  const git = args => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
+  git(['init', '--quiet']);
+  git(['add', '.']);
+  git(['-c', 'user.name=Release contract', '-c', 'user.email=release@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Fixture inputs']);
+  sha = git(['rev-parse', 'HEAD']);
+  git(['update-ref', 'refs/remotes/origin/main', sha]);
+  version = readFileSync(join(checkout, 'VERSION'), 'utf8').trim();
+  const pins = JSON.parse(readFileSync(join(checkout, 'versions.json'), 'utf8'));
+  for (const minor of minors) {
+    const fingerprint = execFileSync('bash', ['-c', 'source "$1/scripts/common.sh"; select_php "$2"; printf "%s" "$BUILD_FINGERPRINT"', 'fingerprint', checkout, minor], { encoding: 'utf8', env: { ...process.env, BASH_ENV: '' } });
+    writeArchive(minor, pins, fingerprint, artifacts);
+  }
+  writeFileSync(join(fakeBin, 'gh'), `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const state = JSON.parse(fs.readFileSync(process.env.GH_STATE_PATH, 'utf8'));
+fs.appendFileSync(process.env.GH_CALLS_PATH, JSON.stringify(args) + '\\n');
+const save = () => fs.writeFileSync(process.env.GH_STATE_PATH, JSON.stringify(state));
+const fail = () => { console.error('Simulated GitHub API failure'); process.exit(1); };
+const value = flag => args[args.indexOf(flag) + 1];
+const output = value => console.log(JSON.stringify(value));
+if (args[0] === 'api') {
+  const endpoint = args.at(-1);
+  if (endpoint.includes('/releases?')) {
+    if (state.failAt === 'releases') fail();
+    output([state.release ? [state.release] : []]);
+  } else if (endpoint.includes('/git/matching-refs/')) {
+    if (state.failAt === 'tag') fail();
+    output(state.tag ? [{ ref: 'refs/tags/v${version}', object: { type: state.annotated ? 'tag' : 'commit', sha: state.tag } }] : []);
+  } else if (endpoint.includes('/git/tags/')) {
+    if (state.failAt === 'annotated') fail();
+    output({ object: { type: 'commit', sha: state.annotatedTarget } });
+  } else fail();
+} else if (args[0] === 'release' && args[1] === 'create') {
+  if (state.release) fail();
+  state.release = { tag_name: args[2], draft: true, target_commitish: value('--target'), assets: [] };
+  state.notes = fs.readFileSync(value('--notes-file'), 'utf8');
+  save();
+} else if (args[0] === 'release' && args[1] === 'upload') {
+  if (!state.release?.draft || !args.includes('--clobber')) fail();
+  let names = args.slice(3, args.indexOf('--repo')).map(file => path.basename(file));
+  if (state.failAt === 'upload' || state.failAt === 'incomplete') names = names.slice(0, 1);
+  state.release.assets = [...state.release.assets.filter(asset => !names.includes(asset.name)), ...names.map(name => ({ name }))];
+  save();
+  if (state.failAt === 'upload') fail();
+} else if (args[0] === 'release' && args[1] === 'edit') {
+  if (!state.release?.draft || !args.includes('--draft=false')) fail();
+  state.release.draft = false;
+  state.tag = state.release.target_commitish;
+  save();
+} else fail();
+`, { mode: 0o755 });
+});
+
+after(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+function scenario(initial = {}) {
+  const directory = mkdtempSync(join(root, 'scenario-'));
+  const statePath = join(directory, 'state.json');
+  const callsPath = join(directory, 'calls.jsonl');
+  writeFileSync(statePath, JSON.stringify(initial));
+  writeFileSync(callsPath, '');
+  return {
+    directory,
+    state: () => JSON.parse(readFileSync(statePath, 'utf8')),
+    update: state => writeFileSync(statePath, JSON.stringify(state)),
+    calls: () => readFileSync(callsPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)),
+    run: (directory = artifacts, overrides = {}) => spawnSync('bash', [join(checkout, 'scripts/release.sh'), directory], {
+      cwd: checkout, encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, BASH_ENV: '', RUNNER_TEMP: root,
+        GH_STATE_PATH: statePath, GH_CALLS_PATH: callsPath, GH_TOKEN: 'fixture-token',
+        GITHUB_REPOSITORY: 'joomengine/php-wasm-int64', VALIDATED_SHA: sha,
+        VALIDATION_RUN_ID: '12345', DEFAULT_BRANCH: 'main', ...overrides },
+    }),
+  };
+}
+function succeeded(result) { assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`); }
+function rejected(result, message) { assert.notEqual(result.status, 0); assert.match(result.stderr, message); }
+function mutations(item) { return item.calls().filter(call => call[0] === 'release'); }
+const draft = target => ({ tag_name: `v${version}`, draft: true, target_commitish: target, assets: [] });
+
+test('successful main validation is the only release trigger, using its exact source and artifacts', () => {
+  const workflow = readFileSync(join(source, '.github/workflows/release.yml'), 'utf8');
+  assert.match(workflow, /workflow_run:\s+workflows: \['Validate PHP int64'\]\s+types: \[completed\]\s+branches: \[main\]/);
+  for (const guard of [
+    "github.event.workflow_run.conclusion == 'success'",
+    "github.event.workflow_run.event == 'push'",
+    'github.event.workflow_run.head_repository.full_name == github.repository',
+    'github.event.workflow_run.head_branch == github.event.repository.default_branch',
+  ]) assert.ok(workflow.includes(guard), `Missing publication guard: ${guard}`);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/);
+  assert.match(workflow, /VALIDATED_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /pattern: int64-php-\*/);
+  assert.doesNotMatch(workflow, /workflow_dispatch:|workflow_call:|push:|uses: \.\/\.github\/workflows\/validate/);
+});
+
+test('new version publishes exactly six verified assets after uploading a commit-bound draft', () => {
+  const item = scenario();
+  succeeded(item.run());
+  assert.equal(item.state().tag, sha);
+  assert.equal(item.state().release.draft, false);
+  assert.equal(item.state().release.target_commitish, sha);
+  assert.deepEqual(item.state().release.assets.map(asset => asset.name).sort(), readdirSync(artifacts).sort());
+  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload', 'edit']);
+  assert.match(item.state().notes, /actions\/runs\/12345/);
+  assert.ok(item.state().notes.includes(sha));
+});
+
+test('published version remains untouched on a later main push with unchanged VERSION', () => {
+  const release = { ...draft('a'.repeat(40)), draft: false, assets: [{ name: 'existing-asset' }] };
+  const item = scenario({ release, tag: 'a'.repeat(40) });
+  succeeded(item.run());
+  assert.deepEqual(item.state().release, release);
+  assert.deepEqual(mutations(item), []);
+});
+
+test('partial draft for this exact commit resumes without recreating the release', () => {
+  const item = scenario({ release: draft(sha), tag: sha });
+  succeeded(item.run());
+  assert.deepEqual(mutations(item).map(call => call[1]), ['upload', 'edit']);
+  assert.equal(item.state().release.assets.length, 6);
+});
+
+test('an existing tag or draft bound to another commit cannot publish', () => {
+  for (const initial of [{ tag: 'b'.repeat(40) }, { release: draft('c'.repeat(40)) }]) {
+    const item = scenario(initial);
+    rejected(item.run(), /different (?:validated )?commit/);
+    assert.deepEqual(mutations(item), []);
+  }
+});
+
+test('release, tag and annotated-tag API failures never become absent-release permission', () => {
+  for (const failAt of ['releases', 'tag', 'annotated']) {
+    const item = scenario({ failAt, ...(failAt === 'annotated' ? { tag: 'd'.repeat(40), annotated: true, annotatedTarget: sha } : {}) });
+    rejected(item.run(), /Simulated GitHub API failure/);
+    assert.deepEqual(mutations(item), []);
+  }
+});
+
+test('upload failure keeps a retryable draft and never publishes incomplete assets', () => {
+  const item = scenario({ failAt: 'upload' });
+  rejected(item.run(), /Simulated GitHub API failure/);
+  assert.equal(item.state().release.draft, true);
+  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload']);
+  item.update({ ...item.state(), failAt: null });
+  succeeded(item.run());
+  assert.equal(item.state().release.draft, false);
+  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload', 'upload', 'edit']);
+});
+
+test('unexpected or missing remote draft assets block publication', () => {
+  for (const initial of [{ failAt: 'incomplete' }, { release: { ...draft(sha), assets: [{ name: 'unrelated-file' }] } }]) {
+    const item = scenario(initial);
+    rejected(item.run(), /exactly the six expected assets/);
+    assert.equal(item.state().release.draft, true);
+    assert.ok(!mutations(item).some(call => call[1] === 'edit'));
+  }
+});
+
+test('corrupt checksums and different source provenance fail before any GitHub mutation', () => {
+  for (const mode of ['checksum', 'fingerprint']) {
+    const item = scenario();
+    const directory = join(item.directory, 'artifacts');
+    cpSync(artifacts, directory, { recursive: true });
+    if (mode === 'checksum') {
+      writeFileSync(join(directory, `php-wasm-int64-${version}-php8.3.tar.gz.sha256`), 'invalid\n');
+    } else {
+      const pins = JSON.parse(readFileSync(join(checkout, 'versions.json'), 'utf8'));
+      writeArchive('8.3', pins, '0'.repeat(64), directory);
+    }
+    rejected(item.run(directory), /Checksum mismatch|provenance differs/);
+    assert.deepEqual(item.calls(), []);
+  }
+});
+
+test('checkout must be the exact validated commit before accepting any release artifact', () => {
+  const item = scenario();
+  rejected(item.run(artifacts, { VALIDATED_SHA: 'f'.repeat(40) }), /Checkout differs/);
+  assert.deepEqual(item.calls(), []);
+});

@@ -102,11 +102,10 @@ to PHP. Application JSON transport must handle BigInt explicitly; ordinary
 
 ## Releases and maintenance
 
-Pull requests upload validated build artifacts and diagnostics. The release
-workflow runs the same full validation for a `vVERSION` tag, checks that the tag
-matches `VERSION` and belongs to `main`, and then publishes all three verified
-archives and checksums. Existing releases are not overwritten. No npm token is
-required.
+Merging into `main` runs the build and test matrix, then automatically publishes
+`vVERSION` using that successful run’s archives and checksums. The first release
+is `v0.0.1`. No manual tag or npm token is required. Published versions are never
+overwritten; increment `VERSION` and the package version for a new release.
 
 Updating an upstream revision requires reviewing patch applicability and
 passing the complete matrix again. Source and toolchain pins make builds

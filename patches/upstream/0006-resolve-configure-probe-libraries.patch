@@ -1,0 +1,29 @@
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -150,7 +150,10 @@ STATIC_LIB_CONFIG=
+ SHARED_LIB_CONFIG=
+ # Configure's link probes load the same side modules as the final PHP runtime.
+ # They must provide the Asyncify globals required by those libraries too.
+-PHP_CONFIGURE_VARS=CPPFLAGS='-DZEND_WASM_INT64=1' LDFLAGS='-sASYNCIFY=${ASYNCIFY}'
++# Only configure's child compiler processes receive the host-library resolver.
++# Unlike LDFLAGS, EMCC_CFLAGS is not substituted into PHP's generated Makefile,
++# so distributed runtimes retain their normal application-controlled loader.
++PHP_CONFIGURE_VARS=CPPFLAGS='-DZEND_WASM_INT64=1' LDFLAGS='-sASYNCIFY=${ASYNCIFY}' EMCC_CFLAGS='-fPIC -flto -O${SUB_OPTIMIZE} --pre-js /src/source/configure-libraries.js'
+ 
+ ## More Options
+ builder_resolve_path = $(if $(strip $(1)),$(if $(filter /% ~%,$(1)),$(1),$(abspath ${PHP_BUILDER_DIR}/$(1))))
+diff --git a/source/configure-libraries.js b/source/configure-libraries.js
+new file mode 100644
+--- /dev/null
++++ b/source/configure-libraries.js
+@@ -0,0 +1,9 @@
++// Configure runs Node-hosted probes outside the installed library directory.
++// Only these temporary probes need a host filesystem path for side modules.
++Module['locateFile'] = (path, prefix) => {
++  if (path.endsWith('.so') && !path.includes('/')) {
++    const directory = process.env.PHP_WASM_CONFIGURE_LIBRARY_DIR || '/src/lib/lib';
++    return directory + '/' + path;
++  }
++  return prefix + path;
++};

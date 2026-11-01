@@ -88,10 +88,23 @@ const fail = () => { console.error('Simulated GitHub API failure'); process.exit
 const value = flag => args[args.indexOf(flag) + 1];
 const output = value => console.log(JSON.stringify(value));
 if (args[0] === 'api') {
-  const endpoint = args.at(-1);
-  if (endpoint.includes('/releases?')) {
+  const endpoint = args.find(argument => argument.startsWith('repos/'));
+  if (endpoint.endsWith('/releases') && value('--method') === 'POST') {
+    if (state.release || !state.tag || state.failAt === 'create') fail();
+    const input = JSON.parse(fs.readFileSync(value('--input'), 'utf8'));
+    const target = state.annotated ? state.annotatedTarget : state.tag;
+    if (!input.draft || input.tag_name !== 'v${version}' || input.target_commitish !== target) fail();
+    state.release = { id: 1901, tag_name: input.tag_name, draft: true, target_commitish: input.target_commitish, assets: [] };
+    state.notes = input.body;
+    save();
+    output({ ...state.release, ...state.createOverride });
+  } else if (endpoint.includes('/releases?')) {
     if (state.failAt === 'releases') fail();
-    output([state.release ? [state.release] : []]);
+    const release = state.staleCollection ? state.collectionRelease : state.release;
+    output([release ? [release] : []]);
+  } else if (endpoint.endsWith('/releases/1901')) {
+    if (!state.release || state.failAt === 'release') fail();
+    output({ ...state.release, ...state.readOverride });
   } else if (endpoint.includes('/git/matching-refs/')) {
     if (state.failAt === 'tag') fail();
     output(state.tag ? [{ ref: 'refs/tags/v${version}', object: { type: state.annotated ? 'tag' : 'commit', sha: state.tag } }] : []);
@@ -99,11 +112,6 @@ if (args[0] === 'api') {
     if (state.failAt === 'annotated') fail();
     output({ object: { type: 'commit', sha: state.annotatedTarget } });
   } else fail();
-} else if (args[0] === 'release' && args[1] === 'create') {
-  if (state.release || !state.tag || !args.includes('--verify-tag')) fail();
-  state.release = { tag_name: args[2], draft: true, target_commitish: value('--target'), assets: [] };
-  state.notes = fs.readFileSync(value('--notes-file'), 'utf8');
-  save();
 } else if (args[0] === 'release' && args[1] === 'upload') {
   if (!state.release?.draft || !args.includes('--clobber')) fail();
   let names = args.slice(3, args.indexOf('--repo')).map(file => path.basename(file));
@@ -125,7 +133,7 @@ function scenario(initial = {}) {
   const directory = mkdtempSync(join(root, 'scenario-'));
   const statePath = join(directory, 'state.json');
   const callsPath = join(directory, 'calls.jsonl');
-  writeFileSync(statePath, JSON.stringify({ tag: sha, ...initial }));
+  writeFileSync(statePath, JSON.stringify({ tag: sha, collectionRelease: initial.release ?? null, ...initial }));
   writeFileSync(callsPath, '');
   return {
     directory,
@@ -144,8 +152,9 @@ function scenario(initial = {}) {
 }
 function succeeded(result) { assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`); }
 function rejected(result, message) { assert.notEqual(result.status, 0); assert.match(result.stderr, message); }
-function mutations(item) { return item.calls().filter(call => call[0] === 'release'); }
-const draft = target => ({ tag_name: `v${version}`, draft: true, target_commitish: target, assets: [] });
+function mutations(item) { return item.calls().filter(call => call[0] === 'release' || call[0] === 'api' && call.includes('POST')); }
+const mutationType = call => call[0] === 'api' ? 'create' : call[1];
+const draft = target => ({ id: 1901, tag_name: `v${version}`, draft: true, target_commitish: target, assets: [] });
 
 test('only explicit version tags release, after identity checks and same-run reusable validation', () => {
   const workflow = readFileSync(join(source, '.github/workflows/release.yml'), 'utf8');
@@ -193,9 +202,39 @@ test('new version publishes exactly six verified assets after uploading a commit
   assert.equal(item.state().release.draft, false);
   assert.equal(item.state().release.target_commitish, sha);
   assert.deepEqual(item.state().release.assets.map(asset => asset.name).sort(), readdirSync(artifacts).sort());
-  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload', 'edit']);
+  assert.deepEqual(mutations(item).map(mutationType), ['create', 'upload', 'edit']);
   assert.match(item.state().notes, /actions\/runs\/12345/);
   assert.ok(item.state().notes.includes(sha));
+});
+
+test('new and resumed drafts publish when collection reads remain stale after every mutation', () => {
+  for (const release of [undefined, draft(sha)]) {
+    const item = scenario({ release, staleCollection: true });
+    succeeded(item.run());
+    assert.equal(item.state().release.draft, false);
+    assert.deepEqual(item.state().release.assets.map(asset => asset.name).sort(), readdirSync(artifacts).sort());
+    assert.deepEqual(mutations(item).map(mutationType), release ? ['upload', 'edit'] : ['create', 'upload', 'edit']);
+  }
+});
+
+test('a failed direct draft lookup cannot authorize upload or publication', () => {
+  const item = scenario({ release: draft(sha), failAt: 'release' });
+  rejected(item.run(), /Simulated GitHub API failure/);
+  assert.deepEqual(mutations(item), []);
+});
+
+test('draft identity changes returned by the direct lookup block publication', () => {
+  for (const readOverride of [{ tag_name: 'v999.0.0' }, { target_commitish: 'c'.repeat(40) }, { id: 1902 }]) {
+    const item = scenario({ release: draft(sha), readOverride });
+    assert.notEqual(item.run().status, 0);
+    assert.deepEqual(mutations(item), []);
+  }
+});
+
+test('an invalid draft creation identifier cannot authorize an upload', () => {
+  const item = scenario({ createOverride: { id: 'invalid' } });
+  assert.notEqual(item.run().status, 0);
+  assert.deepEqual(mutations(item).map(mutationType), ['create']);
 });
 
 test('published version remains untouched when its tag validation is rerun', () => {
@@ -217,7 +256,7 @@ test('force-moving a published version tag does not silently accept the old rele
 test('partial draft for this exact commit resumes without recreating the release', () => {
   const item = scenario({ release: draft(sha), tag: sha });
   succeeded(item.run());
-  assert.deepEqual(mutations(item).map(call => call[1]), ['upload', 'edit']);
+  assert.deepEqual(mutations(item).map(mutationType), ['upload', 'edit']);
   assert.equal(item.state().release.assets.length, 6);
 });
 
@@ -260,11 +299,11 @@ test('upload failure keeps a retryable draft and never publishes incomplete asse
   const item = scenario({ failAt: 'upload' });
   rejected(item.run(), /Simulated GitHub API failure/);
   assert.equal(item.state().release.draft, true);
-  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload']);
+  assert.deepEqual(mutations(item).map(mutationType), ['create', 'upload']);
   item.update({ ...item.state(), failAt: null });
   succeeded(item.run());
   assert.equal(item.state().release.draft, false);
-  assert.deepEqual(mutations(item).map(call => call[1]), ['create', 'upload', 'upload', 'edit']);
+  assert.deepEqual(mutations(item).map(mutationType), ['create', 'upload', 'upload', 'edit']);
 });
 
 test('unexpected or missing remote draft assets block publication', () => {

@@ -85,24 +85,33 @@ if [[ $release == null ]]; then
     '' \
     'All three archives passed the Node and Chromium, Firefox and WebKit validation suites.' \
     'Use the runtime and matching extensions from the same archive.' > "$work/notes.txt"
-  gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$VALIDATED_SHA" --draft \
-    --title "PHP-WASM int64 $tag" --notes-file "$work/notes.txt"
+  jq -n --arg tag "$tag" --arg commit "$VALIDATED_SHA" --arg title "PHP-WASM int64 $tag" \
+    --rawfile notes "$work/notes.txt" \
+    '{tag_name: $tag, target_commitish: $commit, name: $title, body: $notes, draft: true}' > "$work/release.json"
+  release=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input "$work/release.json")
 fi
 
 # Retry only this commit's unpublished draft. Published versions are never replaced.
-release=$(read_release)
-[[ $(jq -r '.draft' <<< "$release") == true && $(jq -r '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
+release_id=$(jq -er '.id | select(type == "number" and . > 0 and . == floor)' <<< "$release")
+# Collection listings can lag behind writes. Keep the creation response and read
+# this exact release for subsequent checks, instead of rediscovering its tag.
+read_release_by_id() {
+  gh api "repos/$GITHUB_REPOSITORY/releases/$release_id"
+}
+release=$(read_release_by_id)
+[[ $(jq -r '.id' <<< "$release") == "$release_id" && $(jq -r '.tag_name' <<< "$release") == "$tag" && $(jq -r '.draft' <<< "$release") == true && $(jq -r '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
   || die 'Release no longer matches the unpublished draft for this commit.'
 gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-release=$(read_release)
-[[ $(jq -r '.draft' <<< "$release") == true && $(jq -r '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
+release=$(read_release_by_id)
+[[ $(jq -r '.id' <<< "$release") == "$release_id" && $(jq -r '.tag_name' <<< "$release") == "$tag" && $(jq -r '.draft' <<< "$release") == true && $(jq -r '.target_commitish' <<< "$release") == "$VALIDATED_SHA" ]] \
   || die 'The draft changed before publication.'
 jq -r '.assets[].name' <<< "$release" | sort > "$work/actual-assets"
 cmp --silent "$work/expected-assets" "$work/actual-assets" || die 'The draft does not contain exactly the six expected assets.'
 existing_commit=$(tag_commit)
 [[ $existing_commit == "$VALIDATED_SHA" ]] || die 'The release tag changed before publication.'
 gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
-release=$(read_release)
-[[ $(jq -r '.draft' <<< "$release") == false ]] || die 'Release publication did not complete.'
+release=$(read_release_by_id)
+[[ $(jq -r '.id' <<< "$release") == "$release_id" && $(jq -r '.tag_name' <<< "$release") == "$tag" && $(jq -r '.target_commitish' <<< "$release") == "$VALIDATED_SHA" && $(jq -r '.draft' <<< "$release") == false ]] \
+  || die 'Release publication did not complete.'
 [[ $(tag_commit) == "$VALIDATED_SHA" ]] || die 'Published tag does not identify the validated commit.'
 log "Published $tag from validated commit $VALIDATED_SHA."

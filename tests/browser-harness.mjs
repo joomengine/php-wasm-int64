@@ -12,7 +12,10 @@ export async function runBrowserRuntime(kind, version, expectedVersion, fixtures
   if (kind === 'cgi-worker') {
     const { PhpCgiWorker } = await import(new URL('php-cgi-wasm/PhpCgiWorker.mjs', packagesURL));
     const php = new PhpCgiWorker({ ...options, prefix: '/', docroot: '/int64-tests', staticFS: true });
-    mountFixtures(await php.binary, fixtures);
+    const binary = await php.binary;
+    // With persistence disabled, the CGI cookie jar still needs an ephemeral directory.
+    binary.FS.mkdirTree('/config');
+    mountFixtures(binary, fixtures);
     for (let pass = 0; pass < 2; pass++) {
       for (const [index, fixture] of fixtures.entries()) {
         const response = await php.request({

@@ -24,6 +24,10 @@ wasm32 pointer requirement remains in place.
   exact parsing for integer tokens. PHP emits a fractional suffix for integral
   floats so those remain JavaScript Numbers. This internal helper does not
   change the browser's global `JSON.parse` or application JSON behavior.
+- JSON string scanners compare character codes, avoiding backslash literals that
+  Emscripten's metadata extractor unescapes after `EM_JS` stringification. The
+  compiled bridge preflight verifies the actual generated headers and final JS
+  link before the full PHP build.
 - Browser timer delays are validated within `0..2147483647` milliseconds before
   converting the i64 import to the Number expected by `setTimeout`.
 

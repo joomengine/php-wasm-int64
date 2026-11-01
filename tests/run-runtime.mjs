@@ -64,11 +64,15 @@ async function validate(runtimeKind) {
   } else if (runtimeKind === 'cgi') {
     const { PhpCgiNode } = await import(new URL('php-cgi-wasm/PhpCgiNode.mjs', packagesURL));
     const php = new PhpCgiNode({ ...options, prefix: '/', docroot: '/int64-tests', persist: [] });
-    mountFixtures(await php.binary, fixtures);
+    const binary = await php.binary;
+    // With persistence disabled, the CGI cookie jar still needs an ephemeral directory.
+    binary.FS.mkdirTree('/config');
+    mountFixtures(binary, fixtures);
     // Repeat each request to catch lifecycle/reuse and extension-shutdown failures.
     for (let pass = 0; pass < 2; pass++) {
       for (const [index, fixture] of fixtures.entries()) {
-        const response = await php.request({ url: `http://localhost/${index}.php`, method: 'GET', headers: { host: 'localhost' } });
+        // PhpCgiNode builds the origin from headers, as with Node's IncomingMessage.
+        const response = await php.request({ url: `/${index}.php`, method: 'GET', headers: { host: 'localhost' } });
         assert.ok(response instanceof Response, `${fixture.path}: missing CGI response`);
         const text = await response.text();
         assert.equal(response.status, 200, text);

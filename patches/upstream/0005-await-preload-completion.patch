@@ -1,0 +1,52 @@
+diff --git a/source/PhpBase.mjs b/source/PhpBase.mjs
+index bf479d0..dd50597 100644
+--- a/source/PhpBase.mjs
++++ b/source/PhpBase.mjs
+@@ -174,13 +174,14 @@ export class PhpBase extends EventTarget
+ 			});
+ 
+ 			await Promise.all(allFiles.map(
+-				fileDef => new Promise(accept => php.FS.createPreloadedFile(
++				fileDef => new Promise((accept, reject) => php.FS.createPreloadedFile(
+ 					fileDef.parent,
+ 					fileDef.name,
+ 					fileDef.url instanceof URL ? fileDef.url.href : fileDef.url,
+ 					true,
+ 					false,
+ 					accept,
++					reject,
+ 				))
+ 			));
+ 
+diff --git a/source/PhpCgiBase.mjs b/source/PhpCgiBase.mjs
+index 6a84c45..69bcef6 100644
+--- a/source/PhpCgiBase.mjs
++++ b/source/PhpCgiBase.mjs
+@@ -754,9 +754,9 @@ export class PhpCgiBase
+ 				}
+ 			});
+ 
+-			await Promise.all(allFiles.map(fileDef => php.FS.createPreloadedFile(
+-				fileDef.parent, fileDef.name, userLocateFile(fileDef.url) ?? fileDef.url, true, false
+-			)));
++			await Promise.all(allFiles.map(fileDef => new Promise((accept, reject) => php.FS.createPreloadedFile(
++				fileDef.parent, fileDef.name, userLocateFile(fileDef.url) ?? fileDef.url, true, false, accept, reject
++			))));
+ 
+ 			const iniLines = sharedLibs.map(lib => {
+ 				if(typeof lib === 'string' || lib instanceof URL)
+diff --git a/source/PhpCgiWebBase.mjs b/source/PhpCgiWebBase.mjs
+index f9dbce4..41fb38e 100644
+--- a/source/PhpCgiWebBase.mjs
++++ b/source/PhpCgiWebBase.mjs
+@@ -180,7 +180,9 @@ export class PhpCgiWebBase extends PhpCgiBase
+ 			});
+ 
+ 			await Promise.all(allFiles.map(
+-				fileDef => php.FS.createPreloadedFile(fileDef.parent, fileDef.name, fileDef.url, true, false)
++				fileDef => new Promise((accept, reject) => php.FS.createPreloadedFile(
++					fileDef.parent, fileDef.name, fileDef.url, true, false, accept, reject
++				))
+ 			));
+ 
+ 			const iniLines = sharedLibs.map(lib => {

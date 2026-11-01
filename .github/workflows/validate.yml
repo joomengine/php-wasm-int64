@@ -79,7 +79,7 @@ jobs:
           select_php "$PHP_VERSION"
           printf 'fingerprint=%s\n' "$BUILD_FINGERPRINT" >> "$GITHUB_OUTPUT"
           VRZNO_SOURCE_ROOT="$VRZNO_DIRECTORY" node --test tests/bridge/source-contract.mjs
-          UPSTREAM_SOURCE_ROOT="$UPSTREAM_DIRECTORY" node --test tests/preload-contract.mjs
+          UPSTREAM_SOURCE_ROOT="$UPSTREAM_DIRECTORY" node --test tests/preload-contract.mjs tests/build/stdlib-contract.mjs
       - name: Restore compiled distribution for exact build inputs
         id: compiled-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -87,6 +87,7 @@ jobs:
           path: dist/php-${{ matrix.php }}
           key: compiled-v1-${{ runner.os }}-${{ runner.arch }}-php${{ matrix.php }}-${{ steps.inputs.outputs.fingerprint }}
       - name: Build pinned PHP and matching extensions
+        id: build
         if: steps.compiled-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -150,6 +151,31 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
+      - name: Collect partial runtime files from a failed build
+        if: failure() && steps.build.outcome == 'failure'
+        run: |
+          source scripts/common.sh
+          select_php "$PHP_VERSION"
+          mkdir -p logs
+          partial_list="$RUNNER_TEMP/int64-partial-runtime-${PHP_VERSION}.list"
+          : > "$partial_list"
+          if [[ -d "$UPSTREAM_DIRECTORY/packages" ]]; then
+            (
+              cd "$UPSTREAM_DIRECTORY"
+              find packages -mindepth 2 -maxdepth 2 -type f \( \
+                -name '*.mjs' -o -name '*.wasm' -o -name '*.so' \
+                -o -name '*.dat' -o -name '*.data' -o -name package.json \
+                -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \
+              \) -print0
+            ) > "$partial_list"
+          fi
+          if [[ -s "$partial_list" ]]; then
+            tar --create --gzip --file logs/partial-runtime.tar.gz \
+              --directory "$UPSTREAM_DIRECTORY" --null --files-from "$partial_list"
+            printf 'Collected unverified partial runtime files for failed-build debugging.\n'
+          else
+            printf 'No partial runtime package files were available to collect.\n'
+          fi
       - name: Collect configure diagnostics
         if: always()
         run: |

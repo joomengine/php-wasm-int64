@@ -32,6 +32,17 @@ them into an executable WebAssembly module. The resulting JavaScript must parse
 and preserve escaped JSON and signed 64-bit values. This catches compiler
 metadata transformations that host C stringification alone cannot detect.
 
+The builder also runs PHP's `strcasestr` behavior probe against an external
+WebAssembly side library. Configure probes must find installed side libraries
+before deciding whether a C library function works. Their filesystem resolver
+is confined to configure and is not linked into distributed runtimes.
+
+When a build fails before staging, its diagnostics include
+`logs/partial-runtime.tar.gz` if package files are available. This archive keeps
+the partial runtime binaries, module helpers, package metadata, and declarations
+under their relative `packages/` paths for debugging. These files are unverified;
+the archive excludes build sources, caches, and environment files.
+
 ## Release boundary
 
 Release workflows must run the runtime validation for the tagged source and

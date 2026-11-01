@@ -1,0 +1,77 @@
+diff --git a/Makefile b/Makefile
+index ba38eeb..50220df 100755
+--- a/Makefile
++++ b/Makefile
+@@ -616,21 +616,29 @@ endif
+ 
+ stdlib: ${STDLIB_NODE_TARGET} ${STDLIB_WEB_TARGET} ${STDLIB_WORKER_TARGET} ${STDLIB_WEBVIEW_TARGET}
+ 
+-${PHP_STDLIB_DIR}/${PHP_VERSION}-node.mjs: ${PHP_DIST_DIR}/php${PHP_VERSION}-node.mjs ${PHP_DIST_DIR}/PhpNode.mjs
++${PHP_STDLIB_DIR}/${PHP_VERSION}-node.mjs: ${NODE_MJS} demo-node/get-symbols.mjs demo-node/persist/symbols.php
+ 	mkdir -p $(dir $@)
+-	node demo-node/get-symbols.mjs ${PHP_VERSION} Node > $@
++	node demo-node/get-symbols.mjs ${PHP_VERSION} Node $(call shell_quote,${PHP_DIST_DIR}/PhpNode.mjs) > $(call shell_quote,$@.tmp)
++	node --input-type=module --check < $(call shell_quote,$@.tmp)
++	mv $(call shell_quote,$@.tmp) $(call shell_quote,$@)
+ 
+-${PHP_STDLIB_DIR}/${PHP_VERSION}-web.mjs: ${PHP_DIST_DIR}/php${PHP_VERSION}-node.mjs ${PHP_DIST_DIR}/PhpNode.mjs
++${PHP_STDLIB_DIR}/${PHP_VERSION}-web.mjs: ${NODE_MJS} demo-node/get-symbols.mjs demo-node/persist/symbols.php
+ 	mkdir -p $(dir $@)
+-	node demo-node/get-symbols.mjs ${PHP_VERSION} Web > $@
++	node demo-node/get-symbols.mjs ${PHP_VERSION} Web $(call shell_quote,${PHP_DIST_DIR}/PhpNode.mjs) > $(call shell_quote,$@.tmp)
++	node --input-type=module --check < $(call shell_quote,$@.tmp)
++	mv $(call shell_quote,$@.tmp) $(call shell_quote,$@)
+ 
+-${PHP_STDLIB_DIR}/${PHP_VERSION}-worker.mjs: ${PHP_DIST_DIR}/php${PHP_VERSION}-node.mjs ${PHP_DIST_DIR}/PhpNode.mjs
++${PHP_STDLIB_DIR}/${PHP_VERSION}-worker.mjs: ${NODE_MJS} demo-node/get-symbols.mjs demo-node/persist/symbols.php
+ 	mkdir -p $(dir $@)
+-	node demo-node/get-symbols.mjs ${PHP_VERSION} Worker > $@
++	node demo-node/get-symbols.mjs ${PHP_VERSION} Worker $(call shell_quote,${PHP_DIST_DIR}/PhpNode.mjs) > $(call shell_quote,$@.tmp)
++	node --input-type=module --check < $(call shell_quote,$@.tmp)
++	mv $(call shell_quote,$@.tmp) $(call shell_quote,$@)
+ 
+-${PHP_STDLIB_DIR}/${PHP_VERSION}-webview.mjs: ${PHP_DIST_DIR}/php${PHP_VERSION}-node.mjs ${PHP_DIST_DIR}/PhpNode.mjs
++${PHP_STDLIB_DIR}/${PHP_VERSION}-webview.mjs: ${NODE_MJS} demo-node/get-symbols.mjs demo-node/persist/symbols.php
+ 	mkdir -p $(dir $@)
+-	node demo-node/get-symbols.mjs ${PHP_VERSION} Webview > $@
++	node demo-node/get-symbols.mjs ${PHP_VERSION} Webview $(call shell_quote,${PHP_DIST_DIR}/PhpNode.mjs) > $(call shell_quote,$@.tmp)
++	node --input-type=module --check < $(call shell_quote,$@.tmp)
++	mv $(call shell_quote,$@.tmp) $(call shell_quote,$@)
+ 
+ # Single Builds
+ 
+diff --git a/demo-node/get-symbols.mjs b/demo-node/get-symbols.mjs
+index 6400c51..fa80fda 100644
+--- a/demo-node/get-symbols.mjs
++++ b/demo-node/get-symbols.mjs
+@@ -1,11 +1,24 @@
+ #!/usr/bin/env node
+-import { PhpNode } from 'php-wasm/PhpNode.mjs';
+ import fs from 'node:fs';
++import { resolve } from 'node:path';
++import { pathToFileURL } from 'node:url';
+ 
+-const [version, envName] = process.argv.slice(2);
++const [version, envName, runtimePath] = process.argv.slice(2);
++// Build from the local distribution, without requiring npm workspace symlinks.
++const runtimeURL = runtimePath
++    ? pathToFileURL(resolve(runtimePath))
++    : new URL('../packages/php-wasm/PhpNode.mjs', import.meta.url);
++const { PhpNode } = await import(runtimeURL);
+ const php = new PhpNode({ version, envName });
++let output = '', diagnostics = '';
++php.addEventListener('output', event => { output += event.detail.join(''); });
++php.addEventListener('error', event => { diagnostics += event.detail.join(''); });
+ 
+-php.addEventListener('output', event => console.log(event.detail.map(line => line.replace(/\s+$/, '')).join('')));
+-php.addEventListener('error', event => console.log(event.detail.map(line => line.replace(/\s+$/, '')).join('')));
+-
+-php.run( fs.readFileSync('demo-node/persist/symbols.php') );
++const status = await php.run(fs.readFileSync(new URL('./persist/symbols.php', import.meta.url), 'utf8'));
++await php.flush();
++if (status !== 0 || diagnostics) {
++    throw new Error('PHP ' + version + ' symbol generation failed (status ' + status + '): ' + diagnostics);
++}
++// Flush generated source before terminating this single-use runtime process.
++await new Promise((accept, reject) => process.stdout.write(output, error => error ? reject(error) : accept()));
++process.exit(0);

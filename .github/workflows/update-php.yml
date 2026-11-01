@@ -1,0 +1,58 @@
+name: Update stable PHP patches
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: int64-php-patch-updates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Resolve stable PHP sources and check native patches
+        id: pins
+        run: bash .github/scripts/update-php.sh
+      - name: Propose the source updates
+        id: pr
+        if: steps.pins.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: maintenance/php-stable-patches
+          add-paths: versions.json
+          title: Update supported PHP versions to their latest stable patches
+          commit-message: Update stable PHP source pins
+          draft: always-true
+          body: |
+            Update the supported PHP lines from the official release feed and exact php-src tag commits. Both native patch layers apply to every changed source.
+
+            The complete build and runtime validation is dispatched on this branch. Review those checks before merging; source discovery and patch applicability alone do not establish runtime compatibility.
+
+            Distribution VERSION and release tags are unchanged. Publish a new distribution through the normal version-tag workflow after validation and review.
+      - name: Validate the exact proposed commit
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: ${{ steps.pr.outputs.pull-request-branch }}
+          UPDATE_SHA: ${{ steps.pr.outputs.pull-request-head-sha }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$UPDATE_BRANCH" --jq .object.sha)" = "$UPDATE_SHA"
+          existing=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs" \
+            -f head_sha="$UPDATE_SHA" -f event=workflow_dispatch -f per_page=1 --jq '.workflow_runs | length')
+          [[ $existing =~ ^[0-9]+$ ]]
+          if [[ $existing == 0 ]]; then
+            gh workflow run validate.yml --repo "$GITHUB_REPOSITORY" --ref "$UPDATE_BRANCH"
+          fi

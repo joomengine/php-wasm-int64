@@ -76,10 +76,10 @@ the archive excludes build sources, caches, and environment files.
 
 ## Release boundary
 
-Release workflows must run the runtime validation for the tagged source and
-publish only the artifacts produced by that source. Pull-request runs upload
-review artifacts and diagnostics; they do not publish an npm package or alter
-the deployed Playground. A tag alone does not establish readiness.
+A successful validation run for a push to `main` triggers publication of
+`vVERSION`. The release workflow checks out that exact validated revision and
+uses only its verified artifacts. Pull-request runs cannot publish releases.
+Published versions are never overwritten. Playground deployment is separate.
 
 Tests establish the behavior they exercise. They do not certify every PHP
 extension or remove browser restrictions on networking, processes, storage,

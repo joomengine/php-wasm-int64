@@ -1,74 +1,57 @@
 name: Release verified PHP int64
 
 on:
-  push:
-    tags: ['v*.*.*']
+  workflow_run:
+    workflows: ['Validate PHP int64']
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
+  actions: read
 
 defaults:
   run:
     shell: bash
 
 concurrency:
-  group: int64-release-${{ github.ref }}
+  group: int64-release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  validate:
-    uses: ./.github/workflows/validate.yml
-    permissions:
-      contents: read
-
   release:
     name: Publish verified archives
-    needs: validate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == github.event.repository.default_branch
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify release identity
-        run: |
-          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
-          git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.5.0'
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
           pattern: int64-php-*
-          path: release
+          path: ${{ runner.temp }}/php-int64-release-artifacts
           merge-multiple: true
-      - name: Verify all three archives
-        run: |
-          cd release
-          for minor in 8.3 8.4 8.5; do
-            archive="php-wasm-int64-${GITHUB_REF_NAME#v}-php${minor}.tar.gz"
-            test -s "$archive"
-            test -s "$archive.sha256"
-            sha256sum --check "$archive.sha256"
-          done
-          test "$(find . -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 3
-      - name: Publish immutable release assets
+      - name: Publish the validated version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'This release already exists; published versions are never overwritten.' >&2
-            exit 1
-          fi
-          printf '%s\n' \
-            'PHP 8.3, 8.4 and 8.5 with native 64-bit PHP integers and wasm32 memory addressing.' \
-            '' \
-            'Every archive passed the Node embedded/CLI/CGI/debugger checks and Chromium, Firefox and WebKit validation at this tag.' \
-            'Each archive includes matching extensions, PHP headers, build provenance, checksums and upstream notices.' \
-            'Use the runtime and extensions from the same archive; upstream 32-bit PHP extension binaries are not ABI compatible.' \
-            > release-notes.txt
-          gh release create "$GITHUB_REF_NAME" release/*.tar.gz release/*.sha256 \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
-            --title "PHP-WASM int64 ${GITHUB_REF_NAME}" --notes-file release-notes.txt
-          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 6
-          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          VALIDATION_RUN_ID: ${{ github.event.workflow_run.id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash scripts/release.sh "$RUNNER_TEMP/php-int64-release-artifacts"

@@ -1,0 +1,323 @@
+diff --git a/source/pib/pib.c b/source/pib/pib.c
+--- a/source/pib/pib.c
++++ b/source/pib/pib.c
+@@ -4,6 +4,8 @@
+ 
+ #include "SAPI.h"
+ #include "main/php_output.h"
++#include "main/php_main.h"
++#include "main/php_variables.h"
+ 
+ #include "sapi/phpdbg/phpdbg.h"
+ #include "sapi/embed/php_embed.h"
+@@ -39,6 +41,14 @@
+ bool started = false;
+ char *_sapi_name = NULL;
+ static const char pib_embed_sapi_name[] = "embed";
++// Fiber rewinds can discard C return values at the Emscripten JS boundary.
++// The queued JS API reads these results after the async call has completed.
++static int pib_run_status = 255;
++static int pib_runtime_healthy = 1;
++static void pib_reset_request(void);
++// Own the final string until the next exec or interpreter destruction. The JS
++// getter copies it synchronously before its queued operation is allowed to end.
++static zend_string *pib_exec_result = NULL;
+ 
+ /**
+  * Initialize Embdedded PHP
+@@ -120,6 +130,8 @@
+ {
+ 	if(0 == strcmp(_sapi_name, pib_embed_sapi_name))
+ 	{
++		if(pib_exec_result) zend_string_release(pib_exec_result);
++		pib_exec_result = NULL;
+ 		php_embed_shutdown();
+ 	}
+ }
+@@ -129,8 +141,9 @@
+  */
+ int EMSCRIPTEN_KEEPALIVE pib_refresh(void)
+ {
+-	pib_destroy();
+-	return pib_init(_sapi_name);
++	if(0 != strcmp(_sapi_name, pib_embed_sapi_name)) return SUCCESS;
++	pib_reset_request();
++	return pib_runtime_healthy ? SUCCESS : FAILURE;
+ }
+ 
+ /**
+@@ -148,44 +161,118 @@
+  * Multiple statements can be wrapped in an IFFE.
+  * Async.
+  */
++char *EMSCRIPTEN_KEEPALIVE pib_exec_result_string(void)
++{
++	return pib_exec_result ? ZSTR_VAL(pib_exec_result) : NULL;
++}
++
++// A callback bailout skips PHP's normal output-handler unlock. Abandon that
++// failed buffer chain so a later queued eval can write output again. Handler
++// destruction can itself execute PHP, so cleanup has its own bailout boundary.
++static void pib_reset_request(void)
++{
++	if(php_output_get_status() & PHP_OUTPUT_LOCKED)
++	{
++		zend_try
++		{
++			php_output_deactivate();
++			if(EG(exception)) zend_clear_exception();
++		}
++		zend_catch
++		{
++		}
++		zend_end_try();
++		php_output_activate();
++	}
++	// A Zend bailout also locks GC and dirties compiler/request state. Start a
++	// fresh PHP request instead of exposing a partially recovered interpreter.
++	if(pib_exec_result) zend_string_release(pib_exec_result);
++	pib_exec_result = NULL;
++	php_request_shutdown(NULL);
++	pib_runtime_healthy = php_request_startup() == SUCCESS;
++	if(pib_runtime_healthy)
++	{
++		SG(headers_sent) = 0;
++		SG(request_info).no_headers = 0;
++		php_register_variable("PHP_SELF", "-", NULL);
++	}
++}
++
++int EMSCRIPTEN_KEEPALIVE pib_is_ready(void)
++{
++	return pib_runtime_healthy;
++}
++
+ char *EMSCRIPTEN_KEEPALIVE pib_exec(char *code)
+ {
+-	char *retVal = NULL;
++	if(!pib_runtime_healthy) return NULL;
++	if(pib_exec_result) zend_string_release(pib_exec_result);
++	pib_exec_result = NULL;
++	EG(exit_status) = 0;
+ 
+ 	zend_try
+ 	{
+-		zval retZv;
+-		zend_eval_string(code, &retZv, "php-wasm exec expression");
+-		convert_to_string(&retZv);
+-		retVal = Z_STRVAL(retZv);
++		zval value;
++		ZVAL_UNDEF(&value);
++		zend_eval_string(code, &value, "php-wasm exec expression");
++		if(!EG(exception) && !Z_ISUNDEF(value))
++		{
++			convert_to_string(&value);
++			if(!EG(exception) && Z_TYPE(value) == IS_STRING)
++			{
++				pib_exec_result = Z_STR(value);
++				ZVAL_UNDEF(&value);
++			}
++		}
++		// User object conversion and destruction remain inside the bailout boundary.
++		zval_ptr_dtor(&value);
++		if(EG(exception))
++		{
+ #if PHP_MAJOR_VERSION >= 8 && PHP_MINOR_VERSION >= 1
+-		if(EG(exception) && !(zend_is_graceful_exit(EG(exception)) || zend_is_unwind_exit(EG(exception))))
++			if(zend_is_graceful_exit(EG(exception)) || zend_is_unwind_exit(EG(exception)))
+ #else
+-		if(EG(exception) && !zend_is_unwind_exit(EG(exception)))
+-#endif
+-		{
+-			zend_exception_error(EG(exception), E_ERROR);
+-		}
++			if(zend_is_unwind_exit(EG(exception)))
++#endif
++			{
++				zend_clear_exception();
++			}
++			else
++			{
++				zend_exception_error(EG(exception), E_ERROR);
++			}
++		}
++		pib_flush();
+ 	}
+ 	zend_catch
+ 	{
++		if(pib_exec_result) zend_string_release(pib_exec_result);
++		pib_exec_result = NULL;
++		pib_reset_request();
+ 	}
+ 	zend_end_try();
+ 
+-	pib_flush();
+-
+-	return retVal;
+-}
+-
+-/**
+- * Run some PHP code and return the exit code.
+- * 0 = good, >0 = bad.
++	return pib_exec_result_string();
++}
++
++/** Final status of the most recently completed pib_run call. */
++int EMSCRIPTEN_KEEPALIVE pib_run_result(void)
++{
++	return pib_run_status;
++}
++
++/**
++ * Run PHP code: 0 for success, explicit exit(n) for requested termination,
++ * 2 for an uncaught eval exception or parse error, PHP's exit status for a
++ * Zend bailout (normally 255 for fatal errors). Bailouts reset request state.
+  * Code starts in PHP mode; the JS wrapper prepares tagged source for eval.
+- * Async.
+-*/
++ * Async. The JS wrapper reads pib_run_result after Fiber rewinds complete.
++ */
+ int EMSCRIPTEN_KEEPALIVE pib_run(char *code)
+ {
+-	int retVal = 255; // Unknown error.
++	if(!pib_runtime_healthy) return 255;
++	int retVal = 255;
++	pib_run_status = 255;
++	EG(exit_status) = 0;
+ 
+ 	zend_try
+ 	{
+@@ -201,24 +288,43 @@
+ 			SG(headers_sent) = 1;
+ 		}
+ 
++		if(EG(exception))
++		{
+ #if PHP_MAJOR_VERSION >= 8 && PHP_MINOR_VERSION >= 1
+-		if(EG(exception) && !(zend_is_graceful_exit(EG(exception)) || zend_is_unwind_exit(EG(exception))))
++			if(zend_is_graceful_exit(EG(exception)) || zend_is_unwind_exit(EG(exception)))
+ #else
+-		if(EG(exception) && !zend_is_unwind_exit(EG(exception)))
+-#endif
+-		{
+-			zend_exception_error(EG(exception), E_ERROR);
++			if(zend_is_unwind_exit(EG(exception)))
++#endif
++			{
++				retVal = EG(exit_status);
++				// An exit ends this eval, not the reusable embedded interpreter.
++				zend_clear_exception();
++			}
++			else
++			{
++				zend_exception_error(EG(exception), E_ERROR);
++				retVal = 2;
++			}
++		}
++		else if(EG(exit_status) != 0)
++		{
+ 			retVal = 2;
+ 		}
++		else if(retVal != SUCCESS)
++		{
++			retVal = 1;
++		}
++		pib_flush();
+ 	}
+ 	zend_catch
+ 	{
+-		retVal = 1; // Code died.
++		// Preserve PHP's native termination status before the new request resets it.
++		retVal = EG(exit_status);
++		pib_reset_request();
+ 	}
+ 	zend_end_try();
+ 
+-	pib_flush();
+-
++	pib_run_status = retVal;
+ 	return retVal;
+ }
+ 
+diff --git a/source/PhpBase.mjs b/source/PhpBase.mjs
+--- a/source/PhpBase.mjs
++++ b/source/PhpBase.mjs
+@@ -380,14 +380,16 @@
+ 		const code = /^<\?php(?=[ \t\r\n]|$)/i.test(source)
+ 			? `     ${source.slice(5)}`
+ 			: `?>${source}`;
+-		return this.binary.then(php => {
+-			return php.ccall(
++		return this.binary.then(async php => {
++			await php.ccall(
+ 				'pib_run'
+-				, NUM
++				, null
+ 				, [STR]
+ 				, [code]
+ 				, {async: true}
+ 			);
++			if(!php.ccall('pib_is_ready', NUM, [], [])) throw new Error('PHP request reset failed after a fatal error');
++			return php.ccall('pib_run_result', NUM, [], []);
+ 		})
+ 		.finally(() => this.flush());
+ 	}
+@@ -419,17 +421,20 @@
+ 	{
+ 		try
+ 		{
+-			return await (await this.binary).ccall(
++			const php = await this.binary;
++			await php.ccall(
+ 				'pib_exec'
+-				, STR
++				, null
+ 				, [STR]
+ 				, [phpCode]
+ 				, {async: true}
+ 			);
++			if(!php.ccall('pib_is_ready', NUM, [], [])) throw new Error('PHP request reset failed after a fatal error');
++			return php.ccall('pib_exec_result_string', STR, [], []);
+ 		}
+ 		finally
+ 		{
+-			this.flush();
++			await this.flush();
+ 		}
+ 	}
+ 
+@@ -551,10 +556,15 @@
+ 	}
+ 
+ 	/**
+-	 * Recreates the underlying PHP module instance.
++	 * Starts a fresh PHP request while retaining the loaded module and filesystem.
+ 	 * @returns {Promise<PhpRuntimeValue>} Resolves when the PHP runtime has been refreshed.
+ 	 */
+-	async refresh()
++	refresh()
++	{
++		return this._enqueue(() => this._refresh());
++	}
++
++	async _refresh()
+ 	{
+ 		const php = await this.binary;
+ 
+@@ -565,13 +575,9 @@
+ 
+ 		Object.keys(this.shared).forEach(key => delete this.shared[key]);
+ 
+-		return php.ccall(
+-			'pib_refresh'
+-			, NUM
+-			, []
+-			, []
+-			, {async: true}
+-		);
++		await php.ccall('pib_refresh', null, [], [], {async: true});
++		if(!php.ccall('pib_is_ready', NUM, [], [])) throw new Error('PHP request reset failed');
++		return 0;
+ 	}
+ 
+ 	/**

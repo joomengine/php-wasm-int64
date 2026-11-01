@@ -24,7 +24,7 @@ select_php() {
   BUILD_FINGERPRINT=$({
     printf '%s\n' "$PHP_MINOR"
     cd "$INT64_ROOT" || return
-    find versions.json VERSION config patches scripts -type f ! -name check.sh ! -name 'verify-*' -print0 \
+    find versions.json VERSION LICENSE NOTICE config patches scripts -type f ! -name check.sh ! -name 'verify-*' -print0 \
       | sort -z | xargs -0 sha256sum
   } | sha256sum | cut -d ' ' -f 1)
   BUILD_DIRECTORY="$INT64_ROOT/.build/php$PHP_MINOR/${BUILD_FINGERPRINT:0:16}"

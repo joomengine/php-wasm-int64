@@ -19,14 +19,24 @@ export function installBridgeFixtures(host = globalThis) {
     uint32: 4294967296,
     safe: Number.MAX_SAFE_INTEGER,
     unsafeNumber: 9007199254740992,
+    negativeUnsafeNumber: -9007199254740992,
+    fraction: 1.5,
+    nan: NaN,
+    positiveInfinity: Infinity,
+    negativeInfinity: -Infinity,
     unsafe: 9007199254740993n,
     min: -9223372036854775808n,
     max: 9223372036854775807n,
+    tooHigh: 9223372036854775808n,
+    tooLow: -9223372036854775809n,
     zero: 0n,
     iterable: [2147483648n, 9007199254740993n, 9223372036854775807n],
     indexed: {'-9223372036854775808': 'minimum', '9223372036854775807': 'maximum'},
     inspectable: {min: -9223372036854775808n, max: 9223372036854775807n, text: 'retained',
       'a\u0000b': 9223372036854775807n, a: 1,
+      'quoted"key\\': 'quote" backslash\\ newline\n tab\t unicode ☺',
+      boxed: Object(-9223372036854775808n),
+      converted: {toJSON: () => ({max: 9223372036854775807n})},
       nested: [{max: 9223372036854775807n, text: '9223372036854775807'}]},
     cycle,
     mutualCycle: first,
@@ -35,7 +45,12 @@ export function installBridgeFixtures(host = globalThis) {
     overflow: () => 9223372036854775808n,
     underflow: () => -9223372036854775809n,
     callback: callback => callback(9223372036854775807n),
+    callbackWith: (callback, value) => callback(value),
+    overflowCallback: callback => callback(9223372036854775808n),
     promise: () => Promise.resolve(9007199254740993n),
+    promiseOf: value => Promise.resolve(value),
+    overflowPromise: () => Promise.resolve(9223372036854775808n),
+    rejectedPromise: () => Promise.reject(new Error('Int64 promise rejection')),
     inspectArray: array => {
       const actual = Object.keys(array);
       check(actual.length === keys.size, `Unexpected PHP array keys: ${actual}`);
@@ -54,6 +69,8 @@ export function installBridgeFixtures(host = globalThis) {
     check(Object.getPrototypeOf(value[0]) === Object.prototype, 'Legacy object remains a detached JS object');
     check(value[0].max === 9223372036854775807n, 'Nested int64 lost precision');
     check(value[0].text === '9223372036854775807', 'Numeric strings remain strings');
+    check(value[0]['quoted"key\\'] === 'quote" backslash\\ newline\n tab\t unicode ☺', 'Legacy JSON escapes remain exact');
+    check(value[0]['a\u0000b'] === -9223372036854775808n, 'Legacy NUL key remains exact');
     check(value[1] === 9007199254740992 && typeof value[1] === 'number', 'PHP float remains Number');
     return 'nested-ok';
   };

@@ -19,3 +19,8 @@ PHP-WASM patches, not an independent replacement runtime.
 `tests/php/core.php` checks fiber start, suspend, resume, return values, and
 exception propagation. Full Node and browser runtime validation is required
 for each pinned PHP release; clean patch application alone is insufficient.
+
+The CLI, CGI, and debugger entry points also retain their completed native
+status for the JavaScript wrappers to read. Emscripten 6.0.6 can discard the
+ordinary return value during a Fiber rewind; treating that zero as success
+would hide script failures and bypass CGI's nonzero-exit recovery.

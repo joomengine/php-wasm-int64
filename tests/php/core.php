@@ -19,7 +19,7 @@ function int64_throws(callable $operation, string $class, string $message): void
     try {
         $operation();
     } catch (Throwable $error) {
-        int64_check($error instanceof $class, $message . ': ' . get_class($error));
+        int64_same($class, get_class($error), $message . ' exception class');
         return;
     }
     throw new RuntimeException($message . ': expected ' . $class);

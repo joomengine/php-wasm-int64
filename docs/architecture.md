@@ -43,6 +43,44 @@ such values; JSON.stringify does not serialize JavaScript BigInt by default.
 Memory pointers remain ordinary wasm32 addresses and are distinct from PHP
 integer values even when both are represented by numbers in existing code.
 
+Constructor `ENV` values initialize the runtime's C environment before
+application `preRun` callbacks execute. A callback can inspect or override those
+values. The runtime copies its environment and callback list so separate
+instances can reuse the same options without sharing initialization state.
+
+## Embedded execution
+
+The public `run()` and `exec()` APIs serialize operations on each interpreter.
+`run()` returns 0 for successful evaluation, the requested code for `exit(n)`,
+2 for an uncaught exception or parse error, and PHP's exit status (normally 255)
+for a Zend bailout. A top-level `return` ends the evaluated script without
+becoming a process exit code.
+`exec()` returns the expression's PHP string conversion; failed evaluation
+returns an empty string with the PHP diagnostic delivered through the normal
+output channel. Callers needing an execution status should use `run()`.
+
+Emscripten 6.0.6 can lose an exported function's return value after a PHP Fiber
+switch. The patched native entry points retain their completed results, and
+the JavaScript wrapper reads them before releasing the operation queue. This
+preserves both execution statuses and expression strings across Fiber rewinds.
+CLI, CGI, and debugger main functions use the same completed-status pattern.
+In particular, a CGI script's nonzero exit must still trigger its normal
+interpreter refresh even when that script used a Fiber.
+
+An explicit PHP `exit()` ends the current evaluation and clears its termination
+exception so the same embedded interpreter can execute another operation.
+Exceptions and explicit exits during script evaluation preserve the request's
+PHP state. A true Zend bailout, including termination from an output handler,
+instead shuts down and reinitializes the PHP request before the next operation;
+PHP variables, declarations, and output handlers from that
+failed request are discarded. The JavaScript runtime and virtual filesystem
+remain available. Continuing a partially unwound Zend request is unsafe even
+when it appears able to print output.
+
+Explicit embedded `refresh()` uses that request boundary as well, preserving
+loaded native modules instead of attempting to load the same side libraries
+again. Refresh is serialized with other public runtime operations.
+
 ## Native extensions
 
 Every Zend-facing extension must be built against the same patched headers,

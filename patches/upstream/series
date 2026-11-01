@@ -5,3 +5,6 @@
 0005-await-preload-completion.patch
 0006-resolve-configure-probe-libraries.patch
 0007-generate-stdlib-from-local-runtime.patch
+0008-preserve-constructor-environment.patch
+0009-preserve-embedded-results-after-fiber-rewinds.patch
+0010-preserve-sapi-results-after-fiber-rewinds.patch

@@ -113,12 +113,26 @@ int64_extension_check($dateFormatter->parse('2040-01-01 00:00:00') === 220898880
 int64_extension_check(openssl_digest($text, 'sha256') === hash('sha256', $text), 'OpenSSL digest mismatch');
 foreach ([4294967296, PHP_INT_MAX] as $length) {
     $lengthRejected = false;
+    $deprecations = 0;
+    // PHP 8.5 deprecates an explicit key length before validating its value.
+    // Consume only that expected diagnostic so the address-width guard is still exercised.
+    set_error_handler(static function (int $severity, string $message, string $file, int $line) use (&$deprecations): bool {
+        if (PHP_VERSION_ID >= 80500 && $severity === E_DEPRECATED
+            && str_ends_with($message, 'the $key_length parameter is deprecated as it is either ignored or truncates the key')) {
+            $deprecations++;
+            return true;
+        }
+        throw new ErrorException($message, 0, $severity, $file, $line);
+    });
     try {
         // Invalid keys keep this regression safe even before the length guard exists.
         openssl_pkey_derive('', '', $length);
     } catch (ValueError $error) {
         $lengthRejected = true;
+    } finally {
+        restore_error_handler();
     }
+    int64_extension_check($deprecations === (PHP_VERSION_ID >= 80500 ? 1 : 0), 'OpenSSL key-length deprecation differs from this PHP version');
     int64_extension_check($lengthRejected, 'OpenSSL did not reject an unrepresentable derived-key length before parsing keys');
 }
 // Public test-only key material; a fixed vector needs neither a config file nor key generation.

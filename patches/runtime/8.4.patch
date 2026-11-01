@@ -630,14 +630,23 @@ index 0e7b3009c60249576231cfacf2dc28a89db6aab6..a29b072d8f45754fe2820c634dc1c38b
  
  	if (fastcgi) {
  		/* How many times to run PHP scripts before dying */
-@@ -2681,3 +2684,23 @@ consult the installation file that came with this distribution, or visit \n\
+@@ -2681,3 +2684,32 @@ consult the installation file that came with this distribution, or visit \n\
  	return exit_status;
  }
  /* }}} */
 +
++static int wasm_sapi_cgi_last_result = 255;
++
++int EMSCRIPTEN_KEEPALIVE wasm_sapi_cgi_result(void)
++{
++	return wasm_sapi_cgi_last_result;
++}
++
 +int EMSCRIPTEN_KEEPALIVE wasm_sapi_cgi_main(int argc, char **argv)
 +{
-+	return main(argc, argv);
++	wasm_sapi_cgi_last_result = 255;
++	wasm_sapi_cgi_last_result = main(argc, argv);
++	return wasm_sapi_cgi_last_result;
 +}
 +
 +void EMSCRIPTEN_KEEPALIVE wasm_sapi_cgi_init(void)
@@ -679,7 +688,7 @@ index 6894f57c12c033b6acc335c40e0a3bab03e86931..777dadb41ecd93fba3755d7bf2a9bfdf
  #include "php.h"
  #include "php_globals.h"
  #include "php_variables.h"
-@@ -1364,6 +1365,15 @@ int main(int argc, char *argv[])
+@@ -1364,6 +1365,24 @@ int main(int argc, char *argv[])
  	 * exiting.
  	 */
  	cleanup_ps_args(argv);
@@ -691,9 +700,18 @@ index 6894f57c12c033b6acc335c40e0a3bab03e86931..777dadb41ecd93fba3755d7bf2a9bfdf
  }
  /* }}} */
 +
++static int wasm_sapi_cli_last_result = 255;
++
++int EMSCRIPTEN_KEEPALIVE wasm_sapi_cli_result(void)
++{
++	return wasm_sapi_cli_last_result;
++}
++
 +int EMSCRIPTEN_KEEPALIVE wasm_sapi_cli_main(int argc, char **argv)
 +{
-+	return main(argc, argv);
++	wasm_sapi_cli_last_result = 255;
++	wasm_sapi_cli_last_result = main(argc, argv);
++	return wasm_sapi_cli_last_result;
 +}
 diff --git a/sapi/embed/php_embed.c b/sapi/embed/php_embed.c
 index c18480d07d313b6245468e956b68d0f250ffd09e..787687f326d7db88f2b3cbbd86cde8063ec6c4e7 100644
@@ -781,12 +799,27 @@ index 69f14913b4b66b8339a6ae4a85e1d1b0dd84fff9..e575ee7629eef77422356a48ba00b30e
  	zend_hash_destroy(&PHPDBG_G(registered));
  	phpdbg_destroy_watchpoints();
  
-@@ -1109,7 +1142,7 @@ php_stream *phpdbg_stream_url_wrap_php(php_stream_wrapper *wrapper, const char *
+@@ -1109,7 +1142,22 @@ php_stream *phpdbg_stream_url_wrap_php(php_stream_wrapper *wrapper, const char *
  	return PHPDBG_G(orig_url_wrap_php)->wops->stream_opener(wrapper, path, mode, options, opened_path, context STREAMS_CC);
  } /* }}} */
  
 -int main(int argc, char **argv) /* {{{ */
-+int EMSCRIPTEN_KEEPALIVE wasm_sapi_phpdbg_main(int argc, char **argv) /* {{{ */
++static int wasm_sapi_phpdbg_main_internal(int argc, char **argv);
++static int wasm_sapi_phpdbg_last_result = 255;
++
++int EMSCRIPTEN_KEEPALIVE wasm_sapi_phpdbg_result(void)
++{
++	return wasm_sapi_phpdbg_last_result;
++}
++
++int EMSCRIPTEN_KEEPALIVE wasm_sapi_phpdbg_main(int argc, char **argv)
++{
++	wasm_sapi_phpdbg_last_result = 255;
++	wasm_sapi_phpdbg_last_result = wasm_sapi_phpdbg_main_internal(argc, argv);
++	return wasm_sapi_phpdbg_last_result;
++}
++
++static int wasm_sapi_phpdbg_main_internal(int argc, char **argv) /* {{{ */
  {
  	sapi_module_struct *phpdbg = &phpdbg_sapi_module;
  	char *sapi_name;

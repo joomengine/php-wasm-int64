@@ -1,0 +1,134 @@
+diff --git a/source/PhpCgiBase.mjs b/source/PhpCgiBase.mjs
+index 6a84c45..156284a 100644
+--- a/source/PhpCgiBase.mjs
++++ b/source/PhpCgiBase.mjs
+@@ -1056,13 +1056,14 @@ export class PhpCgiBase
+ 
+ 			this.output = [];
+ 
+-			exitCode = Number(await php.ccall(
++			await php.ccall(
+ 				'wasm_sapi_cgi_main'
+-				, 'number'
++				, null
+ 				, ['number', 'number']
+ 				, [0, 0]
+ 				, {async: true}
+-			));
++			);
++			exitCode = php.ccall('wasm_sapi_cgi_result', 'number', [], []);
+ 
+ 			++this.count;
+ 
+diff --git a/source/PhpCliNode.mjs b/source/PhpCliNode.mjs
+index 5720f62..569c06b 100644
+--- a/source/PhpCliNode.mjs
++++ b/source/PhpCliNode.mjs
+@@ -166,7 +166,7 @@ export class PhpCliNode extends PhpBase
+ 			/**
+ 			 * Executes queued CLI flags.
+ 			 * @param {...PhpQueueParam} params Queued CLI flag payload.
+-			 * @returns {Promise<number|undefined>} Exit status, or undefined for errors without a status.
++			 * @returns {Promise<number>} Exit status; unexpected runtime errors reject the promise.
+ 			 */
+ 			(...params) => this._run(/** @type {string[]} */ (params[0] ?? [])),
+ 			[cliFlags]
+@@ -176,7 +176,7 @@ export class PhpCliNode extends PhpBase
+ 	/**
+ 	 * Executes the PHP CLI binary with a prepared flag list.
+ 	 * @param {string[]} flags CLI flags to pass to the PHP process.
+-	 * @returns {Promise<number|undefined>} Exit status, or undefined for errors without a status.
++	 * @returns {Promise<number>} Exit status; unexpected runtime errors reject the promise.
+ 	 */
+ 	async _run(flags = [])
+ 	{
+@@ -199,17 +199,19 @@ export class PhpCliNode extends PhpBase
+ 
+ 		try
+ 		{
+-			return await php.ccall(
++			await php.ccall(
+ 				'wasm_sapi_cli_main'
+-				, NUM
++				, null
+ 				, [NUM, NUM]
+ 				, [ptrs.length, arLoc]
+ 				, {async: true}
+ 			);
++			return php.ccall('wasm_sapi_cli_result', NUM, [], []);
+ 		}
+ 		catch(error)
+ 		{
+-			return error.status;
++			if(typeof error?.status === 'number') return error.status;
++			throw error;
+ 		}
+ 		finally
+ 		{
+diff --git a/source/PhpCliWeb.mjs b/source/PhpCliWeb.mjs
+index 460a88c..d059176 100644
+--- a/source/PhpCliWeb.mjs
++++ b/source/PhpCliWeb.mjs
+@@ -174,13 +174,14 @@ export class PhpCliWeb extends PhpBase
+ 
+ 		try
+ 		{
+-			return await php.ccall(
++			await php.ccall(
+ 				'wasm_sapi_cli_main'
+-				, NUM
++				, null
+ 				, [NUM, NUM]
+ 				, [ptrs.length, arLoc]
+ 				, {async: true}
+ 			);
++			return php.ccall('wasm_sapi_cli_result', NUM, [], []);
+ 		}
+ 		catch(error)
+ 		{
+diff --git a/source/PhpDbgNode.mjs b/source/PhpDbgNode.mjs
+index 43a47c3..3ee592a 100644
+--- a/source/PhpDbgNode.mjs
++++ b/source/PhpDbgNode.mjs
+@@ -171,7 +171,7 @@ export class PhpDbgNode extends PhpBase
+ 		{
+ 			const process = php.ccall(
+ 				'wasm_sapi_phpdbg_main'
+-				, NUM
++				, null
+ 				, [NUM, NUM]
+ 				, [ptrs.length, arLoc]
+ 				, {async: true}
+@@ -201,7 +201,8 @@ export class PhpDbgNode extends PhpBase
+ 				, {}
+ 			);
+ 
+-			return process;
++			await process;
++			return php.ccall('wasm_sapi_phpdbg_result', NUM, [], []);
+ 		}
+ 		finally
+ 		{
+diff --git a/source/PhpDbgWeb.mjs b/source/PhpDbgWeb.mjs
+index 46c2121..a107009 100644
+--- a/source/PhpDbgWeb.mjs
++++ b/source/PhpDbgWeb.mjs
+@@ -149,7 +149,7 @@ export class PhpDbgWeb extends PhpBase
+ 		{
+ 			const process = php.ccall(
+ 				'wasm_sapi_phpdbg_main'
+-				, NUM
++				, null
+ 				, [NUM, NUM]
+ 				, [ptrs.length, arLoc]
+ 				, {async: true}
+@@ -179,7 +179,8 @@ export class PhpDbgWeb extends PhpBase
+ 				, {}
+ 			);
+ 
+-			return process;
++			await process;
++			return php.ccall('wasm_sapi_phpdbg_result', NUM, [], []);
+ 		}
+ 		finally
+ 		{

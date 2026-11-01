@@ -12,10 +12,5 @@ Morris and contributors, https://github.com/seanmorris/vrzno. Emscripten and
 the bundled native libraries retain their respective copyright and license
 terms. This repository's LICENSE does not relicense those components.
 
-The WordPress Playground project's existing wasm32 builds with 64-bit PHP
-integers informed the technical investigation. WordPress is not a runtime
-dependency of this project. Any copied upstream implementation must retain
-its applicable attribution and license.
-
 Distributed runtime archives must retain the notices and licenses of their
 included upstream components alongside this notice.

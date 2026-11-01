@@ -2,12 +2,6 @@
 
 Pinned PHP 8.3–8.5 WebAssembly builds with native 64-bit PHP integers, based on Sean Morris’s PHP-WASM runtime.
 
-## Status
-
-The initial runtime is under development in [pull request #1](https://github.com/joomengine/php-wasm-int64/pull/1).
-Source checks do not establish runtime readiness. The complete build and runtime
-matrix must pass before this distribution is used by JoomEngine Playground.
-
 ## What this project builds
 
 This repository retrieves pinned revisions of

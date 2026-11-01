@@ -76,10 +76,11 @@ the archive excludes build sources, caches, and environment files.
 
 ## Release boundary
 
-A successful validation run for a push to `main` triggers publication of
-`vVERSION`. The release workflow checks out that exact validated revision and
-uses only its verified artifacts. Pull-request runs cannot publish releases.
-Published versions are never overwritten. Playground deployment is separate.
+Pushing a `vVERSION` tag triggers the release build and validation. The tag must
+match `VERSION` and identify a commit on the default branch. Publication uses
+only that run’s verified artifacts after every validation job passes. Neither
+merges nor pull-request runs publish releases. Published versions are never
+overwritten. Playground deployment is separate.
 
 Tests establish the behavior they exercise. They do not certify every PHP
 extension or remove browser restrictions on networking, processes, storage,

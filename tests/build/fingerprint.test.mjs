@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-test('compiled cache keys cover legal payloads while allowing test-only reruns', t => {
+test('compiled cache keys cover legal payloads while allowing validation and publisher changes', t => {
   const repository = fileURLToPath(new URL('../../', import.meta.url));
   const fixture = mkdtempSync(join(tmpdir(), 'php-fingerprint-contract-'));
   t.after(() => rmSync(fixture, { recursive: true, force: true }));
@@ -30,5 +30,7 @@ test('compiled cache keys cover legal payloads while allowing test-only reruns',
   writeFileSync(join(fixture, 'tests', 'new-runtime-check.mjs'), '// New runtime coverage.\n');
   appendFileSync(join(fixture, 'scripts', 'check.sh'), '\n# New source validation.\n');
   appendFileSync(join(fixture, 'scripts', 'verify-artifact.mjs'), '\n// New archive validation.\n');
-  assert.equal(fingerprint(), original, 'Validation-only changes must reuse compiled bytes and rerun tests');
+  mkdirSync(join(fixture, '.github', 'scripts'), { recursive: true });
+  writeFileSync(join(fixture, '.github', 'scripts', 'release.sh'), '# Publisher-only change.\n');
+  assert.equal(fingerprint(), original, 'Validation and publisher changes must reuse compiled bytes and rerun tests');
 });

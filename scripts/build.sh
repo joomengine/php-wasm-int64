@@ -33,7 +33,8 @@ docker run --rm --env EMCC_CORES --env SOURCE_DATE_EPOCH \
   --env VRZNO_SOURCE_ROOT=/vrzno --env UPSTREAM_SOURCE_ROOT=/src \
   --volume "$INT64_ROOT:/int64:ro" --volume "$VRZNO_DIRECTORY:/vrzno:ro" \
   --volume "$UPSTREAM_DIRECTORY:/src:ro" \
-  --workdir /int64 "$image" node --test tests/bridge/embedded-contract.mjs tests/build/configure-contract.mjs
+  --workdir /int64 "$image" node --test tests/bridge/embedded-contract.mjs \
+    tests/build/configure-contract.mjs tests/build/environment-contract.mjs
 
 cat > "$UPSTREAM_DIRECTORY/docker-compose.int64.yml" <<EOF
 services:
@@ -54,6 +55,13 @@ targets=(web-mjs worker-mjs webview-mjs node-mjs \
 for target in "${targets[@]}"; do
   log "Building PHP $PHP_VERSION: $target"
   make "${make_arguments[@]}" "$target"
+  if [[ $target == web-mjs ]]; then
+    # This target also builds Node and the selected extensions for its stdlib
+    # generator. Exercise them before spending time on the remaining variants.
+    log "Checking the first PHP $PHP_VERSION runtime and matching extensions"
+    node "$INT64_ROOT/tests/run-runtime.mjs" "$PHP_MINOR" "$UPSTREAM_DIRECTORY" \
+      --build-smoke "$PHP_VERSION"
+  fi
 done
 
 # Export the actual configured headers for future ABI-compatible side modules.

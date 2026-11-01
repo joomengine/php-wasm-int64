@@ -17,6 +17,11 @@ ready on the strength of checks from an earlier commit.
   boundary, including values beyond JavaScript's safe Number range.
 - Embedded, CGI, CLI, and debugger runtimes agree on integer width.
 - PHP fibers retain integer values across suspension, resumption, and return.
+- Embedded execution preserves statuses and expression results across Fiber
+  switches, and subsequent operations run after explicit exits, parse errors,
+  and caught or uncaught exceptions.
+- Constructor environment values reach PHP, and reused callback options do not
+  mix values between runtime instances.
 - The matching dynamically loaded PHP extensions start and execute real
   operations, rather than merely existing on disk.
 - Browser execution is tested with the built WebAssembly artifacts.
@@ -36,6 +41,32 @@ The builder also runs PHP's `strcasestr` behavior probe against an external
 WebAssembly side library. Configure probes must find installed side libraries
 before deciding whether a C library function works. Their filesystem resolver
 is confined to configure and is not linked into distributed runtimes.
+
+A compiled environment regression checks constructor values, application
+`preRun` overrides, and instance isolation using the actual Emscripten pipeline.
+After the first web target has built Node and its extensions, the same integer,
+bridge, extension, and embedded execution fixtures run as an early smoke check
+against those real files. The expected PHP release comes from the pinned build inputs;
+this early check does not create a distribution manifest or replace the final
+tests against extracted release archives.
+
+The execution contract is shared by Node, browser pages, and browser workers.
+It checks actual output and a subsequent operation as well as return values,
+so a silent no-op cannot satisfy a success assertion. Browser diagnostics retain
+nested failures and their causes across worker messages.
+Fatal-bailout recovery also checks garbage collection and request reset, rather
+than treating a successful subsequent print as proof of a healthy interpreter.
+Separate SAPI regressions check CLI and debugger batch exit statuses after
+Fibers and CGI response/refresh behavior after nonzero exits. Explicit embedded
+refresh must preserve the filesystem and working extensions while clearing PHP
+request state and invalidating old PHP object proxies.
+
+Node and browser runners collect independent fixture and runtime failures while
+preserving interpreter reuse on successful paths. Browser validation still runs
+when Node validation fails, provided the extracted archive passed verification.
+Both suites must pass before CI uploads a verified archive. Compiled cache keys
+include the copied license and notice files as well as source and build inputs;
+all final runtime tests run again when compiled files are restored from cache.
 
 When a build fails before staging, its diagnostics include
 `logs/partial-runtime.tar.gz` if package files are available. This archive keeps

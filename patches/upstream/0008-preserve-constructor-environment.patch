@@ -1,0 +1,17 @@
+diff --git a/source/env.js b/source/env.js
+index 3d03703..583e391 100644
+--- a/source/env.js
++++ b/source/env.js
+@@ -1,3 +1,9 @@
+-Module.preRun = Module.preRun || [];
+-if(typeof Module.preRun == 'function') Module.preRun = [ Module.preRun ];
+-Module.preRun.push(() => Object.assign(ENV, Module.ENV || {}));
++// Capture constructor options before Emscripten replaces Module.ENV with its export.
++const phpWasmRequestedEnvironment = { ...Module.ENV };
++const phpWasmPreRun = Module.preRun;
++// Copy callbacks so reusing an options array cannot retain another module's initializer.
++// Populate libc's environment before application preRun callbacks inspect or modify it.
++Module.preRun = [
++    () => Object.assign(ENV, phpWasmRequestedEnvironment),
++    ...(typeof phpWasmPreRun == 'function' ? [phpWasmPreRun] : phpWasmPreRun || [])
++];

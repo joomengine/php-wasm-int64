@@ -456,7 +456,7 @@ index 391a72b5d9e046552dbe4efeb2f1c7d274e225b4..7ea10d3efd2e72236a3d715b43f1ad53
  
  	if ((buf = php_stream_get_record(stream, max_length, str, str_len))) {
 diff --git a/ext/standard/string.c b/ext/standard/string.c
-index 9f8e45af32990ffeec4c4f080e270deebae1a010..1f7bf663fe838c96157e4008380d43e3ada8d40d 100644
+index 9f8e45af32990ffeec4c4f080e270deebae1a010..241ec45bcec2d2e9889107182ae5988e7e8cdc58 100644
 --- a/ext/standard/string.c
 +++ b/ext/standard/string.c
 @@ -1947,7 +1947,7 @@ static inline void _zend_strpos(zval *return_value, zend_string *haystack, zend_
@@ -606,9 +606,9 @@ index 9f8e45af32990ffeec4c4f080e270deebae1a010..1f7bf663fe838c96157e4008380d43e3
  	if (ZSTR_LEN(input_str) == 0 || mult == 0)
  		RETURN_EMPTY_STRING();
  
-+	/* Reject before the multiplier is narrowed to the wasm32 allocation size. */
++	/* The multiplier can exceed size_t when PHP integers are 64-bit on wasm32. */
 +	if (UNEXPECTED((zend_ulong) mult > ZSTR_MAX_LEN / ZSTR_LEN(input_str))) {
-+		zend_throw_error(NULL, "String size overflow");
++		zend_argument_value_error(2, "produces a string exceeding the addressable string size");
 +		RETURN_THROWS();
 +	}
 +
@@ -647,7 +647,7 @@ index 9f8e45af32990ffeec4c4f080e270deebae1a010..1f7bf663fe838c96157e4008380d43e3
  	}
  
 +	if (UNEXPECTED((zend_ulong) pad_length > ZSTR_MAX_LEN)) {
-+		zend_throw_error(NULL, "String size overflow");
++		zend_argument_value_error(2, "exceeds the addressable string size");
 +		RETURN_THROWS();
 +	}
 +

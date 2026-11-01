@@ -55,66 +55,89 @@ const server = createServer(async (request, response) => {
 await new Promise(resolvePromise => server.listen(0, '127.0.0.1', resolvePromise));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-async function deadline(promise, message) {
+async function deadline(promise, message, milliseconds = 180000) {
   let timer;
   try {
     return await Promise.race([
       promise,
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), 180000); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(typeof message === 'function' ? message() : message)), milliseconds); }),
     ]);
   } finally {
     clearTimeout(timer);
   }
 }
 
+const failures = [];
 try {
   for (const [name, factory] of Object.entries({ chromium, firefox, webkit })) {
-    const browser = await factory.launch({ headless: true });
+    let browser;
+    try {
+      browser = await factory.launch({ headless: true, timeout: 30000 });
+    } catch (error) {
+      const failure = new Error(`${name}/PHP${version}: browser launch failed: ${error.stack || error}`);
+      failures.push(failure);
+      console.error(failure.message);
+      continue;
+    }
     try {
       for (const kind of ['web', 'worker', 'cgi-worker']) {
         // An independent browser context prevents one PHP heap, IndexedDB store,
         // or Web Lock from hiding a failure in another runtime entrypoint.
-        const context = await browser.newContext();
+        let context;
         const diagnostics = [];
+        const errorOffset = errors.length;
         try {
-          const page = await context.newPage();
-          page.on('pageerror', error => diagnostics.push(error.stack || error.message));
-          page.on('console', event => {
-            if (event.type() === 'error') diagnostics.push(event.text());
-          });
-          page.on('requestfailed', request => diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
-          await page.goto(origin);
-          const result = await deadline(page.evaluate(async ({ kind, version, expectedVersion, fixtures }) => {
-            if (kind === 'web') {
-              const { runBrowserRuntime } = await import('/tests/browser-harness.mjs');
-              return runBrowserRuntime(kind, version, expectedVersion, fixtures);
-            }
-            return new Promise((resolvePromise, reject) => {
-              const worker = new Worker('/tests/browser-worker.mjs', { type: 'module' });
-              worker.onerror = event => { worker.terminate(); reject(new Error(event.message)); };
-              worker.onmessage = event => {
-                worker.terminate();
-                if (event.data.error) reject(new Error(event.data.error.stack || event.data.error.message));
-                else resolvePromise(event.data.result);
-              };
-              worker.postMessage({ kind, version, expectedVersion, fixtures });
+          console.log(JSON.stringify({ browser: name, runtime: kind, php: expectedVersion, status: 'started' }));
+          const result = await deadline((async () => {
+            context = await browser.newContext();
+            const page = await context.newPage();
+            page.on('pageerror', error => diagnostics.push(error.stack || error.message));
+            page.on('console', event => {
+              if (event.type() === 'error') diagnostics.push(event.text());
             });
-          }, { kind, version, expectedVersion, fixtures }), `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
-          assert.equal(result.passed, true);
-          assert.deepEqual(diagnostics, [], `Browser errors in ${name}/${kind}`);
-          assert.deepEqual(errors, [], 'Missing browser artifacts');
+            page.on('requestfailed', request => diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
+            await page.goto(origin);
+            return page.evaluate(async ({ kind, version, expectedVersion, fixtures }) => {
+              if (kind === 'web') {
+                const { runBrowserRuntime } = await import('/tests/browser-harness.mjs');
+                return runBrowserRuntime(kind, version, expectedVersion, fixtures);
+              }
+              return new Promise((resolvePromise, reject) => {
+                const worker = new Worker('/tests/browser-worker.mjs', { type: 'module' });
+                worker.onerror = event => { worker.terminate(); reject(new Error(event.message)); };
+                worker.onmessage = event => {
+                  worker.terminate();
+                  if (event.data.error) reject(new Error(event.data.error));
+                  else resolvePromise(event.data.result);
+                };
+                worker.postMessage({ kind, version, expectedVersion, fixtures });
+              });
+            }, { kind, version, expectedVersion, fixtures });
+          })(), () => `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
           console.log(JSON.stringify({ browser: name, ...result }));
+          assert.equal(result.passed, true, JSON.stringify(result));
+          assert.deepEqual(diagnostics, [], `Browser errors in ${name}/${kind}`);
+          assert.deepEqual(errors.slice(errorOffset), [], 'Missing browser artifacts');
         } catch (error) {
-          throw new Error(`${name}/${kind}/PHP${version}: ${error.stack || error}\nBrowser diagnostics:\n${diagnostics.join('\n')}\nHTTP diagnostics:\n${errors.join('\n')}`);
+          const failure = new Error(`${name}/${kind}/PHP${version}: ${error.stack || error}\nBrowser diagnostics:\n${diagnostics.join('\n')}\nHTTP diagnostics:\n${errors.slice(errorOffset).join('\n')}`);
+          failures.push(failure);
+          console.error(failure.message);
         } finally {
-          await context.close();
+          if (context) {
+            await deadline(context.close(), `${name}/${kind}/PHP${version}: context cleanup timed out`, 30000)
+              .catch(error => failures.push(new Error(`${name}/${kind}/PHP${version}: context cleanup failed: ${error.stack || error}`)));
+          }
         }
       }
     } finally {
-      await browser.close();
+      await deadline(browser.close(), `${name}/PHP${version}: browser cleanup timed out`, 30000)
+        .catch(error => failures.push(new Error(`${name}/PHP${version}: browser cleanup failed: ${error.stack || error}`)));
     }
   }
 } finally {
   server.closeAllConnections();
   await new Promise(resolvePromise => server.close(resolvePromise));
+}
+if (failures.length) {
+  throw new AggregateError(failures, `${failures.length} browser/runtime validations failed:\n${failures.map(error => error.message).join('\n\n')}`);
 }

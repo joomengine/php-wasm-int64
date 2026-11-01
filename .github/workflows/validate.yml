@@ -119,17 +119,29 @@ jobs:
           mkdir -p dist/verified
           tar --extract --gzip --file "dist/releases/$archive" --directory dist/verified --no-same-owner
       - name: Verify distribution contents and hashes
+        id: verify-extracted
         run: node scripts/verify-artifact.mjs "dist/verified/php-$PHP_VERSION" "$PHP_VERSION"
       - name: Exercise embedded, CLI, CGI and debugger runtimes
+        id: node-tests
         timeout-minutes: 15
         run: |
           set -euo pipefail
           node tests/run-runtime.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/node-php${PHP_VERSION}.log"
       - name: Exercise Chromium, Firefox and WebKit
-        timeout-minutes: 30
+        id: browser-tests
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.verify-extracted.outcome == 'success' }}
+        timeout-minutes: 40
         run: |
           set -euo pipefail
           node tests/browser-test.mjs "$PHP_VERSION" "dist/verified/php-$PHP_VERSION" 2>&1 | tee "logs/browser-php${PHP_VERSION}.log"
+      - name: Require both Node and browser validation to pass
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.verify-extracted.outcome == 'success' }}
+        env:
+          NODE_RESULT: ${{ steps.node-tests.outcome }}
+          BROWSER_RESULT: ${{ steps.browser-tests.outcome }}
+        run: |
+          test "$NODE_RESULT" = success
+          test "$BROWSER_RESULT" = success
       - name: Upload verified archive
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

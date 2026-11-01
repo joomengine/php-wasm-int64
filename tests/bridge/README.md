@@ -7,7 +7,9 @@ execute `int64.php`. Successful execution prints `int64-bridge-ok`.
 The runtime fixture checks both directions across `2^31`, `2^32`, `2^53`, and
 the signed int64 boundaries, plus typed callbacks, promise results, array keys,
 property operations, object casts, overflow exceptions, legacy helper arguments,
-and browser timer bounds. It must run against each compiled PHP version.
+and browser timer bounds. It also checks callback and Promise exception recovery,
+nonfinite Number values, escaped JSON data, boxed BigInts, and custom JSON objects.
+It must run against each compiled PHP version.
 
 `embedded-contract.mjs` runs Vrzno's actual Makefile generator, compiles all five
 generated headers, and links all 44 JS functions with the pinned Emscripten 6.0.6

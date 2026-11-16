@@ -75,8 +75,11 @@ async function verifyTransport(createRuntime, execute, files, { refresh = false,
       check(raw.includes('multipart/mixed') && raw.includes('multipart/alternative')
         && /filename="?fixture\.bin"?/.test(raw) && raw.includes('Bcc: hidden@example.invalid'),
       'PHPMailer fixture did not exercise HTML, text, attachment, and BCC MIME headers');
-      check(phpmailer.event.args.includes('-oi') && phpmailer.event.args.includes('-fbounce+tag@example.invalid')
+      check(phpmailer.event.args.includes('-oi') && phpmailer.event.args.includes('-fbounce-tag@example.invalid')
         && phpmailer.event.args.includes('-t'), 'PHPMailer real Sendmail arguments were not retained');
+      const plusSender = events.find(item => item.name === 'phpmailer-plus-sender');
+      check(!plusSender.event.args.some(argument => argument.startsWith('-f')),
+        'PHPMailer deliberately omitted -f for its plus-address sender, but capture fabricated it');
     }
     if (cgiLifecycle && handlerPresent) {
       let originalCount = events.length;

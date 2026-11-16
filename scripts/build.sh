@@ -34,7 +34,8 @@ docker run --rm --env EMCC_CORES --env SOURCE_DATE_EPOCH \
   --volume "$INT64_ROOT:/int64:ro" --volume "$VRZNO_DIRECTORY:/vrzno:ro" \
   --volume "$UPSTREAM_DIRECTORY:/src:ro" \
   --workdir /int64 "$image" node --test tests/bridge/embedded-contract.mjs \
-    tests/build/configure-contract.mjs tests/build/environment-contract.mjs
+    tests/build/configure-contract.mjs tests/build/environment-contract.mjs \
+    tests/mail/native-contract.mjs
 
 cat > "$UPSTREAM_DIRECTORY/docker-compose.int64.yml" <<EOF
 services:

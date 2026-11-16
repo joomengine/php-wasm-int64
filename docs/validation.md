@@ -25,6 +25,10 @@ ready on the strength of checks from an earlier commit.
 - The matching dynamically loaded PHP extensions start and execute real
   operations, rather than merely existing on disk.
 - Browser execution is tested with the built WebAssembly artifacts.
+- PHP `mail()` and unmodified PHPMailer Sendmail preserve complete MIME bytes
+  through the local host callback. Missing, rejecting, throwing, and asynchronous
+  handlers return truthful delivery results. Refresh preserves the callback,
+  abandoned pipes do not become messages, and unsupported commands stay unsupported.
 - Release archives contain the expected binaries, notices, source/build
   provenance, and checksums and can be validated after extraction.
 

@@ -101,6 +101,15 @@ BigInts. JavaScript BigInts within PHP's signed 64-bit range can be passed back
 to PHP. Application JSON transport must handle BigInt explicitly; ordinary
 `JSON.stringify()` does not serialize it automatically.
 
+## Local mail capture
+
+PHP `mail()` and PHPMailer Sendmail can write to a virtual Sendmail pipe whose
+complete message bytes are accepted by an asynchronous host `onMail` callback.
+Capture returns a real success or failure to PHP, without starting a process or
+sending external email. The callback survives runtime refresh. See the
+[mail capture contract](docs/mail-capture.md) for configuration, metadata,
+compatibility detection, and transport limits.
+
 ## Releases and maintenance
 
 `VERSION` is the single release-version setting. Set the desired patch, minor,

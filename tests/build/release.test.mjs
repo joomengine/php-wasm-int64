@@ -43,7 +43,7 @@ function writeArchive(minor, pins, fingerprint, destination, changeManifest = va
   add('LICENSE', readFileSync(join(checkout, 'LICENSE')));
   add('NOTICE', readFileSync(join(checkout, 'NOTICE')));
   const manifest = {
-    schemaVersion: 1, version, fingerprint, build: { fingerprint },
+    schemaVersion: 1, version, fingerprint, build: { fingerprint }, capabilities: { mailCapture: 1 },
     php: pins.php.find(php => php.minor === minor), abi: pins.abi,
     upstream: pins.upstream, vrzno: pins.vrzno, emscripten: pins.emscripten,
     patches: ['php', 'runtime', 'bridge'].map(path => ({ path, sha256: digest(path) })), files,
@@ -334,6 +334,19 @@ test('corrupt checksums and different source provenance fail before any GitHub m
 test('checkout must be the exact validated commit before accepting any release artifact', () => {
   const item = scenario();
   rejected(item.run(artifacts, { VALIDATED_SHA: 'f'.repeat(40) }), /Checkout differs/);
+  assert.deepEqual(item.calls(), []);
+});
+
+test('archives without the promised mail capability cannot be published', () => {
+  const item = scenario();
+  const directory = join(item.directory, 'artifacts');
+  cpSync(artifacts, directory, { recursive: true });
+  const pins = JSON.parse(readFileSync(join(checkout, 'versions.json'), 'utf8'));
+  writeArchive('8.3', pins, '0'.repeat(64), directory, manifest => {
+    delete manifest.capabilities;
+    return manifest;
+  });
+  rejected(item.run(directory), /supported mail capture contract/);
   assert.deepEqual(item.calls(), []);
 });
 

@@ -1,0 +1,13 @@
+{
+  "name": "PHPMailer",
+  "version": "6.12.0",
+  "repository": "https://github.com/PHPMailer/PHPMailer",
+  "commit": "d1ac35d784bf9f5e61b424901d5a014967f15b12",
+  "license": "LGPL-2.1-only",
+  "purpose": "Unmodified test-only sources exercising the real Sendmail implementation used by Joomla; not included in runtime distributions.",
+  "files": {
+    "PHPMailer.php": "451486c23f7f82e822ddb0667237714d2ce265920c9ed9cf1128b4c5fc46b657",
+    "Exception.php": "22ab858ae438d98f58f41f38ad2191d1b0d59570aebea0463a7948cfae1021b7",
+    "LICENSE": "a1a33180d02960ab1c5de36cf20b1a2f0fe9888d83826ad263da5db52f1b183b"
+  }
+}

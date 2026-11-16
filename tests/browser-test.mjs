@@ -7,6 +7,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, firefox, webkit } from 'playwright';
 import { fixtureDefinitions, supportedVersions, runtimeIdentityEnvironment } from './browser-common.mjs';
+import { mailFixturePaths } from './mail/contract.mjs';
 
 const version = process.argv[2] || process.env.PHP_VERSION;
 assert.ok(supportedVersions.includes(version), 'Usage: node tests/browser-test.mjs <8.3|8.4|8.5> [distribution-directory]');
@@ -19,6 +20,8 @@ const testsDirectory = fileURLToPath(new URL('./', import.meta.url));
 const fixtures = await Promise.all(fixtureDefinitions.map(async definition => ({
   ...definition, source: await readFile(new URL(definition.path, import.meta.url), 'utf8'),
 })));
+const mailFiles = Object.fromEntries(await Promise.all(mailFixturePaths.map(async name =>
+  [name, await readFile(new URL(name, import.meta.url), 'utf8')])));
 const errors = [];
 const types = { '.mjs': 'text/javascript', '.js': 'text/javascript', '.wasm': 'application/wasm', '.so': 'application/wasm', '.json': 'application/json' };
 const server = createServer(async (request, response) => {
@@ -97,10 +100,10 @@ try {
             });
             page.on('requestfailed', request => diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
             await page.goto(origin);
-            return page.evaluate(async ({ kind, version, expectedVersion, fixtures }) => {
+            return page.evaluate(async ({ kind, version, expectedVersion, fixtures, mailFiles }) => {
               if (kind === 'web') {
                 const { runBrowserRuntime } = await import('/tests/browser-harness.mjs');
-                return runBrowserRuntime(kind, version, expectedVersion, fixtures);
+                return runBrowserRuntime(kind, version, expectedVersion, fixtures, mailFiles);
               }
               return new Promise((resolvePromise, reject) => {
                 const worker = new Worker('/tests/browser-worker.mjs', { type: 'module' });
@@ -110,9 +113,9 @@ try {
                   if (event.data.error) reject(new Error(event.data.error));
                   else resolvePromise(event.data.result);
                 };
-                worker.postMessage({ kind, version, expectedVersion, fixtures });
+                worker.postMessage({ kind, version, expectedVersion, fixtures, mailFiles });
               });
-            }, { kind, version, expectedVersion, fixtures });
+            }, { kind, version, expectedVersion, fixtures, mailFiles });
           })(), () => `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
           console.log(JSON.stringify({ browser: name, ...result }));
           assert.equal(result.passed, true, JSON.stringify(result));

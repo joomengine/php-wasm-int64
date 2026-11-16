@@ -8,3 +8,4 @@
 0008-preserve-constructor-environment.patch
 0009-preserve-embedded-results-after-fiber-rewinds.patch
 0010-preserve-sapi-results-after-fiber-rewinds.patch
+0011-virtual-sendmail-capture.patch

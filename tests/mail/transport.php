@@ -18,7 +18,7 @@ $makeMailer = static function (string $case, string $outcome = 'accept'): PHPMai
     $mailer->Sendmail = '/usr/sbin/sendmail';
     $mailer->CharSet = 'UTF-8';
     $mailer->setFrom('author@example.invalid', 'Mail author');
-    $mailer->Sender = 'bounce+tag@example.invalid';
+    $mailer->Sender = 'bounce-tag@example.invalid';
     $mailer->addAddress('recipient@example.invalid', 'Mail recipient');
     $mailer->addCC('copy@example.invalid');
     $mailer->addBCC('hidden@example.invalid');
@@ -80,7 +80,16 @@ $mailer = $makeMailer('phpmailer');
 $assertMail($mailer->preSend(), 'PHPMailer could not build its MIME message');
 $expectedMime = $mailer->getSentMIMEMessage();
 $assertMail($mailer->postSend(), 'PHPMailer Sendmail did not accept a captured message: ' . $mailer->ErrorInfo);
-$expected[] = ['case' => 'phpmailer', 'raw' => base64_encode($expectedMime), 'sender' => 'bounce+tag@example.invalid', 'recipients' => [], 'readHeaders' => true];
+$expected[] = ['case' => 'phpmailer', 'raw' => base64_encode($expectedMime), 'sender' => 'bounce-tag@example.invalid', 'recipients' => [], 'readHeaders' => true];
+
+// PHPMailer deliberately omits -f for plus-addresses in isShellSafe(). The host
+// must preserve that omission instead of inventing an envelope from the headers.
+$mailer = $makeMailer('phpmailer-plus-sender');
+$mailer->Sender = 'bounce+tag@example.invalid';
+$assertMail($mailer->preSend(), 'PHPMailer could not prepare the plus-sender message');
+$expectedMime = $mailer->getSentMIMEMessage();
+$assertMail($mailer->postSend(), 'PHPMailer did not accept the plus-sender message');
+$expected[] = ['case' => 'phpmailer-plus-sender', 'raw' => base64_encode($expectedMime), 'sender' => null, 'recipients' => [], 'readHeaders' => true];
 
 // Host acceptance may be asynchronous. Every non-true result must fail in both
 // callers, with subsequent successful messages still possible in this request.
@@ -104,7 +113,7 @@ foreach (['async-accept', 'reject', 'throw', 'async-reject', 'async-throw', 'und
     if (!$success) {
         $assertMail($mailer->ErrorInfo !== '', 'PHPMailer omitted the failure diagnostic for ' . $outcome);
     }
-    $expected[] = ['case' => $case, 'raw' => base64_encode($expectedMime), 'sender' => 'bounce+tag@example.invalid', 'recipients' => [], 'readHeaders' => true];
+    $expected[] = ['case' => $case, 'raw' => base64_encode($expectedMime), 'sender' => 'bounce-tag@example.invalid', 'recipients' => [], 'readHeaders' => true];
 }
 
 foreach ([

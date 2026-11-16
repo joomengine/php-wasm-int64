@@ -2,11 +2,12 @@ import { installBridgeFixtures } from './bridge/fixtures.mjs';
 import { validateEmbeddedStatus } from './runtime-status.mjs';
 import { verifyCgiStatus } from './sapi-status.mjs';
 import { describeBrowserError } from './browser-errors.mjs';
+import { mailIni, verifyEmbeddedMail, verifyCgiMail } from './mail/contract.mjs';
 import {
   runtimeIni, loadExtensions, captureOutput, check, checkFixtureResult, mountFixtures, runtimeIdentityEnvironment,
 } from './browser-common.mjs';
 
-export async function runBrowserRuntime(kind, version, expectedVersion, fixtures) {
+export async function runBrowserRuntime(kind, version, expectedVersion, fixtures, mailFiles) {
   installBridgeFixtures(globalThis);
   const packagesURL = new URL('/packages/', globalThis.location.href);
   const sharedLibs = await loadExtensions(packagesURL, version);
@@ -57,6 +58,10 @@ export async function runBrowserRuntime(kind, version, expectedVersion, fixtures
         method: 'GET', headers: { host: globalThis.location.host },
       }),
     ));
+    await exercise({ path: 'mail/transport.php' }, 1, () => verifyCgiMail(
+      extra => new PhpCgiWorker({ ...options, staticFS: true, ...extra, ini: runtimeIni + mailIni }),
+      (runtime, path) => runtime.request({ url: new URL(path, globalThis.location.href).href,
+        method: 'GET', headers: { host: globalThis.location.host } }), mailFiles));
   } else {
     check(kind === 'web' || kind === 'worker', `Unsupported browser runtime: ${kind}`);
     const wrapper = kind === 'web' ? 'PhpWeb' : 'PhpWorker';
@@ -80,6 +85,8 @@ export async function runBrowserRuntime(kind, version, expectedVersion, fixtures
     }
     await exercise({ path: 'runtime-status.mjs' }, 1, () =>
       validateEmbeddedStatus(() => new module[wrapper](options)));
+    await exercise({ path: 'mail/transport.php' }, 1, () => verifyEmbeddedMail(
+      extra => new module[wrapper]({ ...options, ...extra, ini: runtimeIni + mailIni }), mailFiles));
   }
   return { php: expectedVersion, runtime: kind, passed: results.every(result => result.passed), results };
 }

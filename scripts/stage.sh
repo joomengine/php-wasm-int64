@@ -120,7 +120,7 @@ jq -n --slurpfile versions "$INT64_ROOT/versions.json" --slurpfile build "$BUILD
   '{schemaVersion:1,name:"php-wasm-int64",version:$version,php:{minor:$minor,version:$php,commit:$phpCommit},
     abi:$versions[0].abi,upstream:$versions[0].upstream,emscripten:$versions[0].emscripten,
     vrzno:$versions[0].vrzno,patches:$patches,build:($build[0]+{node:$node,make:$make}),
-    fingerprint:$fingerprint,format:"esm",files:($files | from_entries)}' > "$staging/manifest.json"
+    fingerprint:$fingerprint,format:"esm",capabilities:{mailCapture:1},files:($files | from_entries)}' > "$staging/manifest.json"
 
 if [[ -e "$ARTIFACT_DIRECTORY" ]]; then
   [[ -f "$ARTIFACT_DIRECTORY/manifest.json" ]] || die "Refusing to replace unrecognized directory: $ARTIFACT_DIRECTORY"

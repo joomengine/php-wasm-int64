@@ -1,0 +1,712 @@
+diff --git a/Makefile b/Makefile
+index 88f5fbbe..87e399e4 100755
+--- a/Makefile
++++ b/Makefile
+@@ -335,7 +335,7 @@ third_party/php${PHP_VERSION}-src/.gitignore:
+ 	@printf '%s\n' 'ERROR: Pinned PHP sources must be fetched by php-wasm-int64/scripts/prepare.sh.' >&2
+ 	@false
+ 
+-third_party/php${PHP_VERSION}-src/ext/pib/pib.c: source/pib/pib.c
++third_party/php${PHP_VERSION}-src/ext/pib/pib.c: source/pib/pib.c source/pib/mail.c source/pib/mail.h source/pib/config.m4
+ 	@ ${DOCKER_RUN} cp -prf source/pib third_party/php${PHP_VERSION}-src/ext/
+ 
+ ########### Build the objects. ###########
+diff --git a/packages/php-cgi-wasm/PhpCgiBase.d.mts b/packages/php-cgi-wasm/PhpCgiBase.d.mts
+index 9a14e5b5..dc9e1f88 100644
+--- a/packages/php-cgi-wasm/PhpCgiBase.d.mts
++++ b/packages/php-cgi-wasm/PhpCgiBase.d.mts
+@@ -1,10 +1,13 @@
+-import type { PhpCgiModuleFactory, PhpCgiRuntimeArgs, PhpBinaryRuntime, PhpRuntimeVersion, RuntimeRequest, PhpCgiSettings, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
++import type { PhpCapturedMail, PhpCgiModuleFactory, PhpCgiRuntimeArgs, PhpBinaryRuntime, PhpRuntimeVersion, RuntimeRequest, PhpCgiSettings, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
+ 
+ export type * from './public.d.ts';
+ 
+ export declare class PhpCgiBase {
+ 	constructor(phpBinLoader: Promise<PhpCgiModuleFactory>, args?: PhpCgiRuntimeArgs);
+ 	phpVersion?: PhpRuntimeVersion;
++	/** Available after binary initialization. */
++	readonly mailCaptureVersion: number;
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	binary: Promise<PhpBinaryRuntime>;
+ 	refresh(): Promise<PhpBinaryRuntime>;
+ 	request(request: RuntimeRequest): Promise<Response | string | undefined>;
+diff --git a/packages/php-cgi-wasm/public.d.ts b/packages/php-cgi-wasm/public.d.ts
+index d611c612..f2204d6d 100644
+--- a/packages/php-cgi-wasm/public.d.ts
++++ b/packages/php-cgi-wasm/public.d.ts
+@@ -26,7 +26,21 @@ export interface PhpVhost {
+ 	entrypoint: string;
+ }
+ 
++export interface PhpCapturedMail {
++	version: 1;
++	/** Complete original MIME bytes, including attachments. */
++	raw: Uint8Array;
++	command: string;
++	/** Parsed literal arguments, excluding the Sendmail executable. */
++	args: string[];
++	envelopeSender: string | null;
++	envelopeRecipients: string[];
++	readRecipientsFromHeaders: boolean;
++}
++
+ export interface PhpRuntimeArgs {
++	/** Return true only after accepting the browser-local message. */
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	autoTransaction?: boolean;
+ 	version?: PhpRuntimeVersion;
+ 	/** @deprecated Install php-sdl-wasm and use PhpSdl for SDL. */
+@@ -74,6 +88,7 @@ export interface PhpBinaryRuntime {
+ 	zvalToJS?: Function;
+ 	consumeZval?: Function;
+ 	onRefresh?: Set<Function>;
++	joomengineMailCapture?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	FS?: {
+ 		syncfs?: (populate: boolean, callback: (error?: Error) => void) => void;
+ 	} & object;
+@@ -148,6 +163,7 @@ export type PhpRuntimeHook = (request: RuntimeRequest, response?: Response) => v
+ export type PhpNotFoundHook = (request: RuntimeRequest) => Response | string | undefined;
+ 
+ export interface PhpCgiRuntimeArgs {
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	version?: PhpRuntimeVersion;
+ 	docroot?: string;
+ 	prefix?: string;
+diff --git a/packages/php-cli-wasm/PhpBase.d.mts b/packages/php-cli-wasm/PhpBase.d.mts
+index f4f5fa16..e9d7f195 100644
+--- a/packages/php-cli-wasm/PhpBase.d.mts
++++ b/packages/php-cli-wasm/PhpBase.d.mts
+@@ -1,4 +1,4 @@
+-import type { PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
++import type { PhpCapturedMail, PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
+ 
+ export type * from './public.d.ts';
+ 
+@@ -7,6 +7,9 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	autoTransaction: boolean;
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
++	/** Available after binary initialization. */
++	readonly mailCaptureVersion: number;
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	phpArgs: PhpRuntimeArgs;
+ 	shared: Record<string, PhpRuntimeValue>;
+ 	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+diff --git a/packages/php-cli-wasm/public.d.ts b/packages/php-cli-wasm/public.d.ts
+index 6f8df55c..04b7ff62 100644
+--- a/packages/php-cli-wasm/public.d.ts
++++ b/packages/php-cli-wasm/public.d.ts
+@@ -26,7 +26,21 @@ export interface PhpVhost {
+ 	entrypoint: string;
+ }
+ 
++export interface PhpCapturedMail {
++	version: 1;
++	/** Complete original MIME bytes, including attachments. */
++	raw: Uint8Array;
++	command: string;
++	/** Parsed literal arguments, excluding the Sendmail executable. */
++	args: string[];
++	envelopeSender: string | null;
++	envelopeRecipients: string[];
++	readRecipientsFromHeaders: boolean;
++}
++
+ export interface PhpRuntimeArgs {
++	/** Return true only after accepting the browser-local message. */
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	autoTransaction?: boolean;
+ 	version?: PhpRuntimeVersion;
+ 	/** @deprecated Install php-sdl-wasm and use PhpSdl for SDL. */
+@@ -74,6 +88,7 @@ export interface PhpBinaryRuntime {
+ 	zvalToJS?: Function;
+ 	consumeZval?: Function;
+ 	onRefresh?: Set<Function>;
++	joomengineMailCapture?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	FS?: {
+ 		syncfs?: (populate: boolean, callback: (error?: Error) => void) => void;
+ 	} & object;
+diff --git a/packages/php-dbg-wasm/PhpBase.d.mts b/packages/php-dbg-wasm/PhpBase.d.mts
+index f4f5fa16..e9d7f195 100644
+--- a/packages/php-dbg-wasm/PhpBase.d.mts
++++ b/packages/php-dbg-wasm/PhpBase.d.mts
+@@ -1,4 +1,4 @@
+-import type { PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
++import type { PhpCapturedMail, PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
+ 
+ export type * from './public.d.ts';
+ 
+@@ -7,6 +7,9 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	autoTransaction: boolean;
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
++	/** Available after binary initialization. */
++	readonly mailCaptureVersion: number;
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	phpArgs: PhpRuntimeArgs;
+ 	shared: Record<string, PhpRuntimeValue>;
+ 	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+diff --git a/packages/php-dbg-wasm/public.d.ts b/packages/php-dbg-wasm/public.d.ts
+index 6f8df55c..04b7ff62 100644
+--- a/packages/php-dbg-wasm/public.d.ts
++++ b/packages/php-dbg-wasm/public.d.ts
+@@ -26,7 +26,21 @@ export interface PhpVhost {
+ 	entrypoint: string;
+ }
+ 
++export interface PhpCapturedMail {
++	version: 1;
++	/** Complete original MIME bytes, including attachments. */
++	raw: Uint8Array;
++	command: string;
++	/** Parsed literal arguments, excluding the Sendmail executable. */
++	args: string[];
++	envelopeSender: string | null;
++	envelopeRecipients: string[];
++	readRecipientsFromHeaders: boolean;
++}
++
+ export interface PhpRuntimeArgs {
++	/** Return true only after accepting the browser-local message. */
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	autoTransaction?: boolean;
+ 	version?: PhpRuntimeVersion;
+ 	/** @deprecated Install php-sdl-wasm and use PhpSdl for SDL. */
+@@ -74,6 +88,7 @@ export interface PhpBinaryRuntime {
+ 	zvalToJS?: Function;
+ 	consumeZval?: Function;
+ 	onRefresh?: Set<Function>;
++	joomengineMailCapture?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	FS?: {
+ 		syncfs?: (populate: boolean, callback: (error?: Error) => void) => void;
+ 	} & object;
+diff --git a/packages/php-wasm/PhpBase.d.mts b/packages/php-wasm/PhpBase.d.mts
+index f4f5fa16..e9d7f195 100644
+--- a/packages/php-wasm/PhpBase.d.mts
++++ b/packages/php-wasm/PhpBase.d.mts
+@@ -1,4 +1,4 @@
+-import type { PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
++import type { PhpCapturedMail, PhpBaseModuleFactory, PhpRuntimeFactory, PhpRuntimeArgs, PhpRuntimeVersion, PhpRuntimeValue, PhpTemplateValue, PhpBinaryRuntime, PhpPathAnalysis, PhpFileNode, PhpFileStat, PhpReadFileOptions, PhpReadDirectoryOptions, PhpDirectoryEntry } from './public.d.ts';
+ 
+ export type * from './public.d.ts';
+ 
+@@ -7,6 +7,9 @@ export declare class PhpBase<RunArgs extends unknown[] = [phpCode: string], Refr
+ 	autoTransaction: boolean;
+ 	transactionStarted: boolean | Promise<void>;
+ 	phpVersion?: PhpRuntimeVersion;
++	/** Available after binary initialization. */
++	readonly mailCaptureVersion: number;
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	phpArgs: PhpRuntimeArgs;
+ 	shared: Record<string, PhpRuntimeValue>;
+ 	queue: Array<[Function, Array<string | number | bigint | boolean | object | undefined>, (value?: PhpRuntimeValue) => void, (reason?: object | string | number | bigint | boolean | Error) => void, boolean?]>;
+diff --git a/packages/php-wasm/public.d.ts b/packages/php-wasm/public.d.ts
+index 6f8df55c..04b7ff62 100644
+--- a/packages/php-wasm/public.d.ts
++++ b/packages/php-wasm/public.d.ts
+@@ -26,7 +26,21 @@ export interface PhpVhost {
+ 	entrypoint: string;
+ }
+ 
++export interface PhpCapturedMail {
++	version: 1;
++	/** Complete original MIME bytes, including attachments. */
++	raw: Uint8Array;
++	command: string;
++	/** Parsed literal arguments, excluding the Sendmail executable. */
++	args: string[];
++	envelopeSender: string | null;
++	envelopeRecipients: string[];
++	readRecipientsFromHeaders: boolean;
++}
++
+ export interface PhpRuntimeArgs {
++	/** Return true only after accepting the browser-local message. */
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	autoTransaction?: boolean;
+ 	version?: PhpRuntimeVersion;
+ 	/** @deprecated Install php-sdl-wasm and use PhpSdl for SDL. */
+@@ -74,6 +88,7 @@ export interface PhpBinaryRuntime {
+ 	zvalToJS?: Function;
+ 	consumeZval?: Function;
+ 	onRefresh?: Set<Function>;
++	joomengineMailCapture?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	FS?: {
+ 		syncfs?: (populate: boolean, callback: (error?: Error) => void) => void;
+ 	} & object;
+diff --git a/source/PhpBase.mjs b/source/PhpBase.mjs
+index 5e1e9d9a..3550527a 100644
+--- a/source/PhpBase.mjs
++++ b/source/PhpBase.mjs
+@@ -39,6 +39,10 @@ export class PhpBase extends EventTarget
+ 	transactionStarted;
+ 	/** @type {string|undefined} */
+ 	phpVersion;
++	/** Native capability, available after binary initialization. */
++	mailCaptureVersion = 0;
++	/** @type {((message: PhpCapturedMail) => boolean|Promise<boolean>)|undefined} */
++	onMail;
+ 
+ 	/** @type {{[key: string]: PhpSharedValue}} */
+ 	shared;
+@@ -79,6 +83,11 @@ export class PhpBase extends EventTarget
+ 		this.transactionStarted = false;
+ 
+ 		this.phpVersion = args.version;
++		this.onMail = 'onMail' in args ? args.onMail : phpSettings.onMail;
++		if(this.onMail !== undefined && typeof this.onMail !== 'function')
++		{
++			throw new TypeError('onMail must be a function returning true when local capture is accepted.');
++		}
+ 		if(args.variant !== undefined && args.variant !== '')
+ 		{
+ 			throw new TypeError('Runtime variants have moved to separate packages. Install php-sdl-wasm and import PhpSdl for SDL.');
+@@ -105,7 +114,10 @@ export class PhpBase extends EventTarget
+ 			}
+ 		};
+ 
+-		const fixed = { onRefresh: new Set };
++		const fixed = {
++			onRefresh: new Set,
++			joomengineMailCapture: message => this.onMail ? this.onMail(message) : false
++		};
+ 		const userLocateFile = args.locateFile || (() => undefined);
+ 
+ 		const files = args.files || [];
+@@ -207,6 +219,7 @@ export class PhpBase extends EventTarget
+ 				, [sapi]
+ 				, {async: true}
+ 			);
++			this.mailCaptureVersion = php.ccall('pib_mail_capture_version', NUM, [], []);
+ 
+ 			return php;
+ 		});
+diff --git a/source/PhpCgiBase.mjs b/source/PhpCgiBase.mjs
+index e7495b04..04d69276 100644
+--- a/source/PhpCgiBase.mjs
++++ b/source/PhpCgiBase.mjs
+@@ -407,6 +407,10 @@ export class PhpCgiBase
+ 	 *
+ 	 */
+ 	phpVersion = null;
++	/** Native capability, available after binary initialization. */
++	mailCaptureVersion = 0;
++	/** @type {((message: PhpCapturedMail) => boolean|Promise<boolean>)|undefined} */
++	onMail;
+ 	/**
+ 	 *
+ 	 */
+@@ -469,6 +473,11 @@ export class PhpCgiBase
+ 		this.extraActions = actions    || {};
+ 
+ 		this.phpArgs = args;
++		this.onMail = args.onMail;
++		if(this.onMail !== undefined && typeof this.onMail !== 'function')
++		{
++			throw new TypeError('onMail must be a function returning true when local capture is accepted.');
++		}
+ 
+ 		this.autoTransaction = ('autoTransaction' in args) ? args.autoTransaction : true;
+ 		this.transactionStarted = false;
+@@ -720,6 +729,7 @@ export class PhpCgiBase
+ 			, stdout: x => this.output.push(x)
+ 			, stderr: x => this.error.push(x)
+ 			, locateFile
++			, joomengineMailCapture: message => this.onMail ? this.onMail(message) : false
+ 		};
+ 
+ 		return this.binary = this.binLoader.then(({default: PHP}) => instantiateRuntimeModule(PHP, phpArgs)).then(async php => {
+@@ -780,6 +790,7 @@ export class PhpCgiBase
+ 				, []
+ 				, {async: true}
+ 			);
++			this.mailCaptureVersion = php.ccall('pib_mail_capture_version', NUM, [], []);
+ 
+ 			const cookieStat = php.FS.analyzePath('/config/.cookies');
+ 
+@@ -1064,6 +1075,8 @@ export class PhpCgiBase
+ 				, {async: true}
+ 			);
+ 			exitCode = php.ccall('wasm_sapi_cgi_result', 'number', [], []);
++			// Native request shutdown has already released PHP-owned streams.
++			php.ccall('pib_mail_discard', null, [], []);
+ 
+ 			++this.count;
+ 
+diff --git a/source/PhpCgiWebBase.mjs b/source/PhpCgiWebBase.mjs
+index 41fb38e8..e294c9e0 100644
+--- a/source/PhpCgiWebBase.mjs
++++ b/source/PhpCgiWebBase.mjs
+@@ -139,6 +139,7 @@ export class PhpCgiWebBase extends PhpCgiBase
+ 			, stdout: x => this.output.push(x)
+ 			, stderr: x => this.error.push(x)
+ 			, locateFile
++			, joomengineMailCapture: message => this.onMail ? this.onMail(message) : false
+ 		};
+ 
+ 		this.binary = requestWebLock('php-wasm-fs-lock', async () => {
+@@ -214,6 +215,7 @@ export class PhpCgiWebBase extends PhpCgiBase
+ 				, []
+ 				, {async: true}
+ 			);
++			this.mailCaptureVersion = php.ccall('pib_mail_capture_version', NUM, [], []);
+ 
+ 			const cookieStat = php.FS.analyzePath('/config/.cookies');
+ 
+diff --git a/source/globals.d.ts b/source/globals.d.ts
+index 1ebeb019..b395e828 100644
+--- a/source/globals.d.ts
++++ b/source/globals.d.ts
+@@ -78,7 +78,20 @@ declare interface PhpPreloadFile {
+ 	name?: string;
+ }
+ 
++declare interface PhpCapturedMail {
++	version: 1;
++	/** Complete original MIME bytes, including attachments. */
++	raw: Uint8Array;
++	command: string;
++	/** Parsed literal arguments, excluding the Sendmail executable. */
++	args: string[];
++	envelopeSender: string | null;
++	envelopeRecipients: string[];
++	readRecipientsFromHeaders: boolean;
++}
++
+ declare interface PhpRuntimeArgs {
++	onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 	autoTransaction?: boolean;
+ 	version?: PhpRuntimeVersion;
+ 	/** Legacy input is accepted for a runtime migration error. */
+@@ -159,6 +172,8 @@ declare module 'php-wasm/PhpBase' {
+ 		queue: Array<[PhpQueuedCallback, PhpQueueParams, PhpQueueResolve, PhpQueueReject, boolean?]>;
+ 		autoTransaction: boolean;
+ 		transactionStarted: boolean | Promise<void>;
++		mailCaptureVersion: number;
++		onMail?: (message: PhpCapturedMail) => boolean | Promise<boolean>;
+ 		flush(): void;
+ 		refresh(): Promise<PhpRuntimeValue>;
+ 	}
+diff --git a/source/pib/config.m4 b/source/pib/config.m4
+index 136dd88c..49f2b73d 100644
+--- a/source/pib/config.m4
++++ b/source/pib/config.m4
+@@ -90,5 +90,5 @@ if test "$PHP_pib" != "no"; then
+   dnl In case of no dependencies
+   AC_DEFINE(HAVE_pib, 1, [ Have pib support ])
+ 
+-  PHP_NEW_EXTENSION(pib, pib.c, $ext_shared)
++  PHP_NEW_EXTENSION(pib, pib.c mail.c, $ext_shared)
+ fi
+diff --git a/source/pib/mail.c b/source/pib/mail.c
+new file mode 100644
+index 00000000..40da2ef2
+--- /dev/null
++++ b/source/pib/mail.c
+@@ -0,0 +1,216 @@
++/* Browser-local Sendmail transport. No operating-system process is created. */
++#define _GNU_SOURCE
++#include <emscripten.h>
++#include <errno.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "mail.h"
++
++typedef struct pib_mail_pipe {
++	FILE *stream;
++	char *bytes;
++	size_t size;
++	char *command;
++	char *tokens;
++	char **args;
++	size_t count;
++	const char *sender;
++	char **recipients;
++	size_t recipient_count;
++	int headers;
++	int abandoned;
++	struct pib_mail_pipe *next;
++} pib_mail_pipe;
++
++static pib_mail_pipe *pib_mail_pipes;
++
++/* A copied byte array remains valid while Asyncify is suspended or memory grows.
++ * All metadata is copied before awaiting host acceptance. A missing, throwing,
++ * or rejecting handler must never be reported as a successful capture. */
++EM_ASYNC_JS(int, pib_mail_accept, (const unsigned char *bytes, size_t size,
++	const char *command, size_t count, char **args, const char *sender,
++	size_t recipient_count, char **recipients, int headers), {
++	try {
++		const handler = Module.joomengineMailCapture;
++		if (typeof handler !== 'function') return 0;
++		const strings = (pointer, length) => Array.from({length}, (_, index) =>
++			UTF8ToString(HEAPU32[(pointer >>> 2) + index]));
++		const message = {
++			version: 1,
++			raw: HEAPU8.slice(bytes >>> 0, (bytes >>> 0) + (size >>> 0)),
++			command: UTF8ToString(command),
++			args: strings(args, count),
++			envelopeSender: sender ? UTF8ToString(sender) : null,
++			envelopeRecipients: strings(recipients, recipient_count),
++			readRecipientsFromHeaders: !!headers
++		};
++		return (await handler(message)) === true ? 1 : 0;
++	} catch (error) {
++		return 0;
++	}
++});
++
++int EMSCRIPTEN_KEEPALIVE pib_mail_capture_version(void)
++{
++	return 1;
++}
++
++static void pib_mail_free(pib_mail_pipe *pipe)
++{
++	free(pipe->bytes);
++	free(pipe->command);
++	free(pipe->tokens);
++	free(pipe->args);
++	free(pipe->recipients);
++	free(pipe);
++}
++
++/* Parse only literal shell quoting needed by PHP/PHPMailer. Expansions,
++ * redirections, command separators, and line continuations are unsupported.
++ * The resulting arguments never reach a shell or any external executable. */
++static int pib_mail_parse(pib_mail_pipe *pipe, const char *command)
++{
++	size_t length = strlen(command);
++	if (length > (SIZE_MAX / sizeof(char *)) - 2) return 0;
++	pipe->command = strdup(command);
++	pipe->tokens = malloc(length + 1);
++	pipe->args = calloc(length + 2, sizeof(char *));
++	pipe->recipients = calloc(length + 2, sizeof(char *));
++	if (!pipe->command || !pipe->tokens || !pipe->args || !pipe->recipients) {
++		errno = ENOMEM;
++		return 0;
++	}
++
++	const unsigned char *read = (const unsigned char *) command;
++	char *write = pipe->tokens;
++	while (*read) {
++		while (*read == ' ' || *read == '\t') read++;
++		if (!*read) break;
++		pipe->args[pipe->count++] = write;
++		unsigned char quote = 0;
++		while (*read) {
++			unsigned char c = *read++;
++			if (c < 32 || c == 127) {
++				if (!quote && c == '\t') break;
++				return 0;
++			}
++			if (!quote && c == ' ') break;
++			if (c == quote) {
++				quote = 0;
++				continue;
++			}
++			if (!quote && (c == '\'' || c == '"')) {
++				quote = c;
++				continue;
++			}
++			if (c == '\\' && quote != '\'') {
++				unsigned char escaped = *read++;
++				if (escaped < 32 || escaped == 127) return 0;
++				/* Within double quotes a backslash only quotes these characters. */
++				if (quote == '"' && !strchr("\\\"$`", escaped)) *write++ = '\\';
++				*write++ = (char) escaped;
++				continue;
++			}
++			if ((!quote && strchr("|&;<>()$`*?[]{}~", c))
++				|| (quote == '"' && (c == '$' || c == '`'))) return 0;
++			*write++ = (char) c;
++		}
++		if (quote) return 0;
++		*write++ = '\0';
++	}
++	if (!pipe->count || strcmp(pipe->args[0], "/usr/sbin/sendmail")) return 0;
++
++	int positional = 0;
++	for (size_t index = 1; index < pipe->count; index++) {
++		char *arg = pipe->args[index];
++		if (!*arg) return 0;
++		if (!positional && !strcmp(arg, "--")) {
++			positional = 1;
++		} else if (!positional && !strcmp(arg, "-t")) {
++			pipe->headers = 1;
++		} else if (!positional && (!strcmp(arg, "-i") || !strcmp(arg, "-oi"))) {
++			/* Dot lines remain part of the original message bytes. */
++		} else if (!positional && !strncmp(arg, "-f", 2)) {
++			if (pipe->sender) return 0;
++			if (arg[2]) pipe->sender = arg + 2;
++			else if (++index < pipe->count) pipe->sender = pipe->args[index];
++			else return 0;
++			if (!*pipe->sender || pipe->sender[0] == '-') return 0;
++		} else {
++			if (arg[0] == '-') return 0;
++			pipe->recipients[pipe->recipient_count++] = arg;
++		}
++	}
++	return 1;
++}
++
++/* Strong definitions replace Emscripten's ENOSYS stubs, never its shell layer. */
++FILE *popen(const char *command, const char *mode)
++{
++	if (!command || !mode || (strcmp(mode, "w") && strcmp(mode, "wb"))) {
++		errno = ENOSYS;
++		return NULL;
++	}
++	pib_mail_pipe *pipe = calloc(1, sizeof(*pipe));
++	if (!pipe) return NULL;
++	errno = ENOSYS;
++	if (!pib_mail_parse(pipe, command)) {
++		int error = errno;
++		pib_mail_free(pipe);
++		errno = error;
++		return NULL;
++	}
++	pipe->stream = open_memstream(&pipe->bytes, &pipe->size);
++	if (!pipe->stream) {
++		int error = errno;
++		pib_mail_free(pipe);
++		errno = error;
++		return NULL;
++	}
++	pipe->next = pib_mail_pipes;
++	pib_mail_pipes = pipe;
++	return pipe->stream;
++}
++
++int pclose(FILE *stream)
++{
++	pib_mail_pipe **entry = &pib_mail_pipes;
++	while (*entry && (*entry)->stream != stream) entry = &(*entry)->next;
++	if (!*entry) {
++		errno = ENOSYS;
++		return -1;
++	}
++	pib_mail_pipe *pipe = *entry;
++	*entry = pipe->next; /* Remove before Asyncify can suspend: finalize once. */
++	int failed = ferror(stream);
++	if (fflush(stream)) failed = 1;
++	if (fclose(stream)) failed = 1;
++	int accepted = !failed && !pipe->abandoned && pib_mail_accept(
++		(const unsigned char *) pipe->bytes, pipe->size, pipe->command,
++		pipe->count - 1, pipe->args + 1, pipe->sender,
++		pipe->recipient_count, pipe->recipients, pipe->headers);
++	pib_mail_free(pipe);
++	/* pclose returns waitpid's encoded status; PHP unwraps WEXITSTATUS. */
++	if (!accepted) errno = EIO;
++	return accepted ? 0 : (1 << 8);
++}
++
++void pib_mail_abandon(void)
++{
++	for (pib_mail_pipe *pipe = pib_mail_pipes; pipe; pipe = pipe->next) {
++		pipe->abandoned = 1;
++	}
++}
++
++/* Internal request-boundary cleanup: PHP must have destroyed its streams first. */
++void EMSCRIPTEN_KEEPALIVE pib_mail_discard(void)
++{
++	while (pib_mail_pipes) {
++		pib_mail_pipe *pipe = pib_mail_pipes;
++		pib_mail_pipes = pipe->next;
++		fclose(pipe->stream);
++		pib_mail_free(pipe);
++	}
++}
+diff --git a/source/pib/mail.h b/source/pib/mail.h
+new file mode 100644
+index 00000000..bc35dafd
+--- /dev/null
++++ b/source/pib/mail.h
+@@ -0,0 +1,9 @@
++#ifndef PIB_MAIL_H
++#define PIB_MAIL_H
++
++/* Mark pending handles before PHP destroys its streams; never close a FILE
++ * while a PHP stream can still flush it. Discard only after shutdown. */
++void pib_mail_abandon(void);
++void pib_mail_discard(void);
++
++#endif
+diff --git a/source/pib/pib.c b/source/pib/pib.c
+index 5917e5c0..b64e0f51 100644
+--- a/source/pib/pib.c
++++ b/source/pib/pib.c
+@@ -30,6 +30,7 @@
+ 
+ #include "php.h"
+ #include "pib.h"
++#include "mail.h"
+ #include "php_ini.h"
+ #include "ext/standard/info.h"
+ 
+@@ -130,9 +131,11 @@ void pib_destroy(void)
+ {
+ 	if(0 == strcmp(_sapi_name, pib_embed_sapi_name))
+ 	{
++		pib_mail_abandon();
+ 		if(pib_exec_result) zend_string_release(pib_exec_result);
+ 		pib_exec_result = NULL;
+ 		php_embed_shutdown();
++		pib_mail_discard();
+ 	}
+ }
+ 
+@@ -171,6 +174,7 @@ char *EMSCRIPTEN_KEEPALIVE pib_exec_result_string(void)
+ // destruction can itself execute PHP, so cleanup has its own bailout boundary.
+ static void pib_reset_request(void)
+ {
++	pib_mail_abandon();
+ 	if(php_output_get_status() & PHP_OUTPUT_LOCKED)
+ 	{
+ 		zend_try
+@@ -189,6 +193,7 @@ static void pib_reset_request(void)
+ 	if(pib_exec_result) zend_string_release(pib_exec_result);
+ 	pib_exec_result = NULL;
+ 	php_request_shutdown(NULL);
++	pib_mail_discard();
+ 	pib_runtime_healthy = php_request_startup() == SUCCESS;
+ 	if(pib_runtime_healthy)
+ 	{
+@@ -384,6 +389,22 @@ char* EMSCRIPTEN_KEEPALIVE pib_tokenize(char *code)
+ 
+ PHP_RINIT_FUNCTION(pib)
+ {
++	/* Any previous request has already destroyed its PHP-owned streams. */
++	pib_mail_discard();
++	return SUCCESS;
++}
++
++PHP_MSHUTDOWN_FUNCTION(pib)
++{
++	pib_mail_discard();
++	return SUCCESS;
++}
++
++PHP_RSHUTDOWN_FUNCTION(pib)
++{
++	/* PHP will flush/close its remaining resources after this hook. Suppress
++	 * capture for unfinished pipes without invalidating their FILE pointers. */
++	pib_mail_abandon();
+ 	return SUCCESS;
+ }
+ 
+@@ -407,9 +428,9 @@ zend_module_entry pib_module_entry = {
+ 	"pib",
+ 	NULL,                    /* zend_function_entry */
+ 	PHP_MINIT(pib),          /* PHP_MINIT - Module initialization */
+-	NULL,                    /* PHP_MSHUTDOWN - Module shutdown */
++	PHP_MSHUTDOWN(pib),       /* PHP_MSHUTDOWN - Module shutdown */
+ 	PHP_RINIT(pib),          /* PHP_RINIT - Request initialization */
+-	NULL,                    /* PHP_RSHUTDOWN - Request shutdown */
++	PHP_RSHUTDOWN(pib),       /* PHP_RSHUTDOWN - Request shutdown */
+ 	PHP_MINFO(pib),          /* PHP_MINFO - Module info */
+ 	PHP_PIB_VERSION,         /* Version */
+ 	STANDARD_MODULE_PROPERTIES

@@ -8,6 +8,7 @@ import { installBridgeFixtures } from './bridge/fixtures.mjs';
 import { validateEmbeddedStatus } from './runtime-status.mjs';
 import { verifyCliStatus, verifyCgiStatus } from './sapi-status.mjs';
 import { verifyPhpDbgBatchStatus } from './phpdbg-status.mjs';
+import { mailFixturePaths, mailIni, verifyEmbeddedMail, verifyCliMail, verifyCgiMail, verifyDebuggerMail } from './mail/contract.mjs';
 import {
   supportedVersions, fixtureDefinitions, runtimeIni, loadExtensions,
   captureOutput, checkFixtureResult, mountFixtures, runtimeIdentityEnvironment,
@@ -34,6 +35,9 @@ const packagesURL = pathToFileURL(`${directory}/packages/`);
 const fixtures = await Promise.all(fixtureDefinitions.map(async definition => ({
   ...definition, source: await readFile(new URL(definition.path, import.meta.url), 'utf8'),
 })));
+
+const mailFiles = Object.fromEntries(await Promise.all(mailFixturePaths.map(async name =>
+  [name, await readFile(new URL(name, import.meta.url), 'utf8')])));
 
 async function waitFor(check, label, output, timeout = 30000) {
   const deadline = Date.now() + timeout;
@@ -81,6 +85,8 @@ async function validate(runtimeKind) {
       if (!passed) php = output = undefined;
     }
     await record({ path: 'runtime-status.mjs' }, () => validateEmbeddedStatus(() => new PhpNode(options)));
+    await record({ path: 'mail/transport.php (embedded)' }, () => verifyEmbeddedMail(
+      extra => new PhpNode({ ...options, ...extra, ini: runtimeIni + mailIni }), mailFiles));
   } else if (runtimeKind === 'cli') {
     const { PhpCliNode } = await import(new URL('php-cli-wasm/PhpCliNode.mjs', packagesURL));
     // Each CLI request owns a fresh interpreter lifecycle.
@@ -97,6 +103,8 @@ async function validate(runtimeKind) {
       });
     }
     await record({ path: 'sapi-status.mjs (CLI)' }, () => verifyCliStatus(extra => new PhpCliNode({ ...options, ...extra })));
+    await record({ path: 'mail/transport.php (CLI)' }, () => verifyCliMail(
+      extra => new PhpCliNode({ ...options, ...extra, ini: runtimeIni + mailIni }), mailFiles));
   } else if (runtimeKind === 'cgi') {
     const { PhpCgiNode } = await import(new URL('php-cgi-wasm/PhpCgiNode.mjs', packagesURL));
     let php;
@@ -126,6 +134,9 @@ async function validate(runtimeKind) {
       (runtime, path) => runtime.request({ url: path, method: 'GET', headers: { host: 'localhost' } }),
       { nodeAccessLog: true },
     ));
+    await record({ path: 'mail/transport.php (CGI)' }, () => verifyCgiMail(
+      extra => new PhpCgiNode({ ...options, ...extra, ini: runtimeIni + mailIni }),
+      (runtime, path) => runtime.request({ url: path, method: 'GET', headers: { host: 'localhost' } }), mailFiles));
   } else if (runtimeKind === 'debugger') {
     const { PhpDbgNode } = await import(new URL('php-dbg-wasm/PhpDbgNode.mjs', packagesURL));
     await record({ path: 'interactive debugger session' }, async () => {
@@ -178,6 +189,8 @@ async function validate(runtimeKind) {
       assert.equal(exitCode, 0);
     });
     await record({ path: 'phpdbg-status.mjs' }, () => verifyPhpDbgBatchStatus(extra => new PhpDbgNode({ ...options, ...extra })));
+    await record({ path: 'mail/transport.php (debugger)' }, () => verifyDebuggerMail(
+      extra => new PhpDbgNode({ ...options, ...extra, ini: runtimeIni + mailIni }), mailFiles));
   } else {
     throw new Error(`Unknown runtime kind: ${runtimeKind}`);
   }

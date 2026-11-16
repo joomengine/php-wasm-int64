@@ -19,6 +19,7 @@ export async function verifyArtifact(directory, expectedMinor) {
   if (expectedMinor) assert.equal(manifest.php.minor, expectedMinor, 'Unexpected PHP version in archive');
   assert.equal(manifest.abi?.integerBits, 64, 'Distribution must have 64-bit PHP integers');
   assert.equal(manifest.abi?.pointerBits, 32, 'Distribution must have wasm32 pointers');
+  assert.equal(manifest.capabilities?.mailCapture, 1, 'Distribution must declare the supported mail capture contract');
   for (const [key, commit] of [['upstream', manifest.upstream?.commit], ['vrzno', manifest.vrzno?.commit]]) {
     assert.match(commit || '', /^[a-f0-9]{40}$/, `Missing exact ${key} source revision`);
   }

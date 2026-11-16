@@ -83,27 +83,34 @@ try {
       continue;
     }
     try {
-      for (const kind of ['web', 'worker', 'cgi-worker']) {
-        // An independent browser context prevents one PHP heap, IndexedDB store,
-        // or Web Lock from hiding a failure in another runtime entrypoint.
+      const runs = ['web', 'worker', 'cgi-worker'].flatMap(kind =>
+        ['runtime', 'mail'].map(suite => ({ kind, suite })));
+      for (const { kind, suite } of runs) {
+        // Status fixtures create several replacement Wasm heaps. Terminating their
+        // context/worker before the unrelated mail suite bounds browser memory.
+        // Mail reuse and recovery still run together inside that full suite.
+        const label = `${name}/${kind}/${suite}/PHP${version}`;
         let context;
         const diagnostics = [];
         const errorOffset = errors.length;
         try {
-          console.log(JSON.stringify({ browser: name, runtime: kind, php: expectedVersion, status: 'started' }));
+          console.log(JSON.stringify({ browser: name, runtime: kind, suite, php: expectedVersion, status: 'started' }));
           const result = await deadline((async () => {
             context = await browser.newContext();
             const page = await context.newPage();
             page.on('pageerror', error => diagnostics.push(error.stack || error.message));
             page.on('console', event => {
               if (event.type() === 'error') diagnostics.push(event.text());
+              if (event.type() === 'info' && event.text().startsWith('PHP_WASM_FIXTURE ')) {
+                console.log(`${name}: ${event.text()}`);
+              }
             });
             page.on('requestfailed', request => diagnostics.push(`${request.url()}: ${request.failure()?.errorText}`));
             await page.goto(origin);
-            return page.evaluate(async ({ kind, version, expectedVersion, fixtures, mailFiles }) => {
+            return page.evaluate(async ({ kind, version, expectedVersion, fixtures, mailFiles, suite }) => {
               if (kind === 'web') {
                 const { runBrowserRuntime } = await import('/tests/browser-harness.mjs');
-                return runBrowserRuntime(kind, version, expectedVersion, fixtures, mailFiles);
+                return runBrowserRuntime(kind, version, expectedVersion, fixtures, mailFiles, suite);
               }
               return new Promise((resolvePromise, reject) => {
                 const worker = new Worker('/tests/browser-worker.mjs', { type: 'module' });
@@ -113,22 +120,28 @@ try {
                   if (event.data.error) reject(new Error(event.data.error));
                   else resolvePromise(event.data.result);
                 };
-                worker.postMessage({ kind, version, expectedVersion, fixtures, mailFiles });
+                worker.postMessage({ kind, version, expectedVersion, fixtures, mailFiles, suite });
               });
-            }, { kind, version, expectedVersion, fixtures, mailFiles });
-          })(), () => `${name}/${kind}/PHP${version} timed out: ${diagnostics.join('\n')}`);
+            }, { kind, version, expectedVersion, fixtures, mailFiles, suite });
+          })(), () => `${label} timed out: ${diagnostics.join('\n')}`);
           console.log(JSON.stringify({ browser: name, ...result }));
           assert.equal(result.passed, true, JSON.stringify(result));
-          assert.deepEqual(diagnostics, [], `Browser errors in ${name}/${kind}`);
+          assert.equal(result.suite, suite, 'The browser must execute the requested suite.');
+          const expectedFixtures = suite === 'mail' ? ['mail/transport.php']
+            : [...Array.from({ length: kind === 'cgi-worker' ? 2 : 1 }, () => fixtures.map(fixture => fixture.path)).flat(),
+              kind === 'cgi-worker' ? 'sapi-status.mjs' : 'runtime-status.mjs'];
+          assert.deepEqual(result.results.map(result => result.fixture), expectedFixtures,
+            'Every requested fixture must execute in its isolated suite.');
+          assert.deepEqual(diagnostics, [], `Browser errors in ${label}`);
           assert.deepEqual(errors.slice(errorOffset), [], 'Missing browser artifacts');
         } catch (error) {
-          const failure = new Error(`${name}/${kind}/PHP${version}: ${error.stack || error}\nBrowser diagnostics:\n${diagnostics.join('\n')}\nHTTP diagnostics:\n${errors.slice(errorOffset).join('\n')}`);
+          const failure = new Error(`${label}: ${error.stack || error}\nBrowser diagnostics:\n${diagnostics.join('\n')}\nHTTP diagnostics:\n${errors.slice(errorOffset).join('\n')}`);
           failures.push(failure);
           console.error(failure.message);
         } finally {
           if (context) {
-            await deadline(context.close(), `${name}/${kind}/PHP${version}: context cleanup timed out`, 30000)
-              .catch(error => failures.push(new Error(`${name}/${kind}/PHP${version}: context cleanup failed: ${error.stack || error}`)));
+            await deadline(context.close(), `${label}: context cleanup timed out`, 30000)
+              .catch(error => failures.push(new Error(`${label}: context cleanup failed: ${error.stack || error}`)));
           }
         }
       }

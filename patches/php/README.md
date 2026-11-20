@@ -1,9 +1,15 @@
 # PHP wasm32 with native int64 integers
 
 Apply the patch matching the PHP minor version to its pinned source tree **after**
-the corresponding patch in `patches/runtime/`. The patches target PHP 8.3.36,
-8.4.27, and 8.5.12;
-new source releases require review and a fresh full build/test matrix.
+the corresponding patch in `patches/runtime/`. [versions.json](../../versions.json)
+records the exact PHP source commits. The updater and the build use the same
+patch preparation procedure.
+
+PDO SQLite callbacks must preserve 64-bit integers in both directions. PHP
+8.4.28 and 8.5.13 implement both conversions under
+`ZEND_ENABLE_ZVAL_LONG64`, which this ABI enables. PHP 8.3.37 receives the
+same conversions from the local backport. An upstream implementation must
+match the full backport to satisfy the patch check.
 
 Compile the runtime and every PHP extension with `-DZEND_WASM_INT64=1` and retain
 that setting in the installed PHP configuration header. This mode requires the

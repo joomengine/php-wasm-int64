@@ -51,8 +51,26 @@ fetch_git() {
 apply_patch_file() {
   local directory=$1 patch=$2
   [[ -s $patch ]] || die "Patch is missing or empty: $patch"
+  log "Applying ${patch#"$INT64_ROOT"/}"
   git -C "$directory" apply --check --whitespace=error-all "$patch"
   git -C "$directory" apply --whitespace=error-all "$patch"
+}
+
+apply_php_patches() {
+  local directory=$1 minor=$2
+  apply_patch_file "$directory" "$INT64_ROOT/patches/runtime/$minor.patch"
+  apply_patch_file "$directory" "$INT64_ROOT/patches/php/$minor.patch"
+
+  # PHP 8.4 and 8.5 already implement int64 PDO SQLite callbacks upstream.
+  # Apply the same backport to 8.3 until both hunks are present in its source.
+  if [[ $minor == 8.3 ]]; then
+    local backport="$INT64_ROOT/patches/php/pdo-sqlite-int64.patch"
+    if git -C "$directory" apply --reverse --check --whitespace=error-all "$backport" 2>/dev/null; then
+      log "PHP $minor already contains the PDO SQLite int64 backport."
+    else
+      apply_patch_file "$directory" "$backport"
+    fi
+  fi
 }
 
 apply_patch_series() {

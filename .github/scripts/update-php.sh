@@ -35,12 +35,11 @@ while IFS= read -r minor; do
   fi
 
   directory="$work/php-$minor"
+  log "Checking PHP $current -> $latest ($commit)."
   fetch_git https://github.com/php/php-src.git "$commit" "$directory"
   source_version=$(sed -n 's/^#define PHP_VERSION "\([^"]*\)"$/\1/p' "$directory/main/php_version.h")
   [[ $source_version == "$latest" ]] || die "PHP $latest source identifies itself as $source_version."
-  # A PHP update is proposed only if both native patch layers still apply exactly.
-  apply_patch_file "$directory" "$INT64_ROOT/patches/runtime/$minor.patch"
-  apply_patch_file "$directory" "$INT64_ROOT/patches/php/$minor.patch"
+  apply_php_patches "$directory" "$minor"
   jq --arg minor "$minor" --arg version "$latest" --arg commit "$commit" \
     '(.php[] | select(.minor == $minor)) |= (.version = $version | .commit = $commit)' \
     "$work/versions.json" > "$work/next.json"

@@ -5,8 +5,8 @@ These patches derive from `patch/php8.3.patch`, `patch/php8.4.patch`, and
 at commit `1e1fb6703730759181e84c62bce35ee9129febb9`.
 
 They retain the upstream runtime integration and normalize paths to apply
-inside the PHP source directory. They are rebased onto the official PHP
-8.3.36, 8.4.27, and 8.5.12 releases, respectively. Apply the matching runtime
+inside the PHP source directory. The matching official PHP release and commit for each
+minor are recorded in [versions.json](../../versions.json). Apply the runtime
 patch first, then `patches/php/<minor>.patch` for the integer ABI and bounds
 checks.
 

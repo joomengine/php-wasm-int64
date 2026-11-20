@@ -316,34 +316,6 @@ index feda8442733837986775c78bf3013e26e16b3eef..7d8470a7fbc915e972c5393a932ea578
  
  	EVP_PKEY *pkey = php_openssl_pkey_from_zval(priv_key, 0, "", 0, 2);
  	if (!pkey) {
-diff --git a/ext/pdo_sqlite/sqlite_driver.c b/ext/pdo_sqlite/sqlite_driver.c
-index fbd0ba7293b4c6bcbee8914c2e3ae0548200deb0..c7447b3bfd9c66d1969c83a54beb98399b24e1ee 100644
---- a/ext/pdo_sqlite/sqlite_driver.c
-+++ b/ext/pdo_sqlite/sqlite_driver.c
-@@ -355,7 +355,11 @@ static int do_callback(struct pdo_sqlite_fci *fc, zval *cb,
- 		/* get the value */
- 		switch (sqlite3_value_type(argv[i])) {
- 			case SQLITE_INTEGER:
-+#if ZEND_LONG_MAX > 2147483647
-+				ZVAL_LONG(&zargs[i + is_agg], sqlite3_value_int64(argv[i]));
-+#else
- 				ZVAL_LONG(&zargs[i + is_agg], sqlite3_value_int(argv[i]));
-+#endif
- 				break;
- 
- 			case SQLITE_FLOAT:
-@@ -397,7 +401,11 @@ static int do_callback(struct pdo_sqlite_fci *fc, zval *cb,
- 		if (!Z_ISUNDEF(retval)) {
- 			switch (Z_TYPE(retval)) {
- 				case IS_LONG:
-+#if ZEND_LONG_MAX > 2147483647
-+					sqlite3_result_int64(context, Z_LVAL(retval));
-+#else
- 					sqlite3_result_int(context, Z_LVAL(retval));
-+#endif
- 					break;
- 
- 				case IS_NULL:
 diff --git a/ext/random/random.c b/ext/random/random.c
 index 57f8f183b2867109b07efd57f01e72ceaad862ac..4a45aed3d5298f90f16df31b47ebcf4595f43ff3 100644
 --- a/ext/random/random.c

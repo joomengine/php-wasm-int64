@@ -24,8 +24,7 @@ source_version=$(sed -n 's/^#define PHP_VERSION "\([^"]*\)"$/\1/p' "$PHP_DIRECTO
 [[ $source_version == "$PHP_VERSION" ]] || die "PHP source version mismatch: expected $PHP_VERSION, got $source_version"
 # Ported Sean fiber/runtime patches precede our scalar ABI changes. The original
 # upstream patch targets older releases and must not be applied to these sources.
-apply_patch_file "$PHP_DIRECTORY" "$INT64_ROOT/patches/runtime/$PHP_MINOR.patch"
-apply_patch_file "$PHP_DIRECTORY" "$INT64_ROOT/patches/php/$PHP_MINOR.patch"
+apply_php_patches "$PHP_DIRECTORY" "$PHP_MINOR"
 mkdir -p "$PHP_DIRECTORY/preload/Zend"
 touch "$PHP_DIRECTORY/patched"
 

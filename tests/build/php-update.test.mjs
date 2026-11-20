@@ -8,6 +8,21 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+const sqliteOriginal = 'argument:\n  value_int\n  break\n\nresult:\n  result_int\n  break\n';
+const sqliteBackport = `diff --git a/sqlite.txt b/sqlite.txt
+--- a/sqlite.txt
++++ b/sqlite.txt
+@@ -1,3 +1,3 @@
+ argument:
+-  value_int
++  value_int64
+   break
+@@ -5,3 +5,3 @@
+ result:
+-  result_int
++  result_int64
+   break
+`;
 let root, upstream, bin, pins, versions;
 
 before(() => {
@@ -29,6 +44,7 @@ before(() => {
     for (const version of [php.version, next]) {
       writeFileSync(join(upstream, 'main/php_version.h'), `#define PHP_VERSION "${version}"\n`);
       writeFileSync(join(upstream, 'native.txt'), 'base\n');
+      writeFileSync(join(upstream, 'sqlite.txt'), sqliteOriginal);
       git(['add', '.']);
       git(['commit', '--quiet', '-m', `PHP ${version}`]);
       git(['-c', 'tag.gpgsign=false', 'tag', '--annotate', `php-${version}`, '-m', `PHP ${version}`]);
@@ -57,6 +73,7 @@ function scenario() {
   for (const path of ['.github/scripts', 'scripts', 'patches/runtime', 'patches/php']) mkdirSync(join(directory, path), { recursive: true });
   cpSync(join(source, '.github/scripts/update-php.sh'), join(directory, '.github/scripts/update-php.sh'));
   cpSync(join(source, 'scripts/common.sh'), join(directory, 'scripts/common.sh'));
+  writeFileSync(join(directory, 'patches/php/pdo-sqlite-int64.patch'), sqliteBackport);
   const initial = JSON.stringify(pins, null, 2) + '\n';
   writeFileSync(join(directory, 'versions.json'), initial);
   writeFileSync(join(directory, 'VERSION'), '2.4.6\n');
@@ -142,6 +159,27 @@ test('native patch conflicts fail before any source pin is written', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /patch failed|does not apply/);
   assert.equal(readFileSync(join(item.directory, 'versions.json'), 'utf8'), item.initial);
+});
+
+test('PHP 8.3 accepts the exact upstream SQLite backport and rejects partial or conflicting changes', () => {
+  const upstreamBackport = sqliteOriginal.replaceAll('_int', '_int64');
+  for (const [contents, succeeds] of [
+    [sqliteOriginal, true],
+    [upstreamBackport, true],
+    [sqliteOriginal.replace('value_int', 'value_int64'), false],
+    [sqliteOriginal.replace('result_int', 'other_result'), false],
+  ]) {
+    const item = scenario();
+    const checkout = join(item.directory, 'checkout');
+    mkdirSync(checkout);
+    writeFileSync(join(checkout, 'native.txt'), 'base\n');
+    writeFileSync(join(checkout, 'sqlite.txt'), contents);
+    const result = spawnSync('bash', ['-euo', 'pipefail', '-c',
+      'source scripts/common.sh; apply_php_patches "$1" 8.3', 'sqlite-backport-test', checkout],
+    { cwd: item.directory, encoding: 'utf8', env: { ...process.env, BASH_ENV: '' } });
+    assert.equal(result.status === 0, succeeds, result.stderr);
+    assert.equal(readFileSync(join(checkout, 'sqlite.txt'), 'utf8'), succeeds ? upstreamBackport : contents);
+  }
 });
 
 test('a source tag must contain the version advertised by the official feed', () => {
